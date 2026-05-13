@@ -976,11 +976,25 @@ public class Vanishpp extends JavaPlugin implements Listener {
         }
 
         if (configManager.enableFly && player.getGameMode() != GameMode.SPECTATOR) {
-            // Store pre-vanish fly state so we can restore it exactly on unvanish
-            player.setMetadata("vanishpp_pre_vanish_fly",
-                    new FixedMetadataValue(this, player.getAllowFlight()));
+            // Store original state if not already saved
+            if (!player.hasMetadata("vanishpp_pre_vanish_fly")) {
+                player.setMetadata("vanishpp_pre_vanish_fly", 
+                        new FixedMetadataValue(this, player.getAllowFlight()));
+            }
+
+            // Apply immediately for smooth manual vanish
             player.setAllowFlight(true);
             player.setFlying(true);
+
+            // Re-enforce after 1 second to override plugins like AuthMe that reset flight on login
+            vanishScheduler.runLaterGlobal(() -> {
+                if (player.isOnline() && isVanished(player)) {
+                    if (!player.getAllowFlight() || !player.isFlying()) {
+                        player.setAllowFlight(true);
+                        player.setFlying(true);
+                    }
+                }
+            }, 20L);
         }
 
         if (voiceChatHook != null)
