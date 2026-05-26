@@ -956,6 +956,7 @@ public class Vanishpp extends JavaPlugin implements Listener {
         // Controlled by config 'vanish-gamemodes.default-spectator' (separate from the
         // double-shift toggle which is governed by the vrules spectator_gamemode rule).
         if (configManager.defaultSpectatorOnVanish
+                && ruleManager.getRule(player, RuleManager.SPECTATOR_GAMEMODE)
                 && player.getGameMode() != GameMode.SPECTATOR) {
             if (!player.hasMetadata("vanishpp_pre_vanish_gamemode")) {
                 GameMode gm = player.getGameMode();
@@ -1189,11 +1190,6 @@ public class Vanishpp extends JavaPlugin implements Listener {
      * right after they connect.
      */
     public void vanishPlayerSilently(Player player) {
-        if (!player.hasMetadata("vanishpp_pre_vanish_gamemode")) {
-            GameMode gmToStore = player.getGameMode() == GameMode.SPECTATOR
-                    ? GameMode.SURVIVAL : player.getGameMode();
-            player.setMetadata("vanishpp_pre_vanish_gamemode", new FixedMetadataValue(this, gmToStore));
-        }
         applyVanishEffects(player);
         if (isValidMessage(configManager.vanishMessage)) {
             player.sendMessage(messageManager.parse(configManager.vanishMessage, player));

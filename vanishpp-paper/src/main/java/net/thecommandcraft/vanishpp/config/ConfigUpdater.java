@@ -110,13 +110,13 @@ public class ConfigUpdater {
             }
         }
         
-        linesToAdd.add(indentPrefix + "# [Auto-Generated Default]");
         linesToAdd.add(templateLine);
 
         // Find the best place to insert
         int insertPos = findInsertionPoint(fullPath, outputLines);
         if (insertPos != -1) {
             outputLines.addAll(insertPos, linesToAdd);
+            plugin.getLogger().info("Auto-injected missing config key: " + fullPath);
             return true;
         } else {
             // Fallback for root keys

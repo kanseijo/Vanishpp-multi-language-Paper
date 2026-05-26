@@ -153,8 +153,6 @@ public class MigrationManager {
                 configManager.logMigrationChange("Added update-checker and spectator mode settings.");
             case 7:
                 configManager.logMigrationChange("Added scoreboard settings.");
-            case 8:
-                configManager.logMigrationChange("Enhanced spectator mode and auto-join vanish behavior.");
                 break;
         }
     }

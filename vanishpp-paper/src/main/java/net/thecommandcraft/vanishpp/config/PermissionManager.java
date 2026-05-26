@@ -81,6 +81,7 @@ public class PermissionManager {
         }
         this.permissionsConfig = YamlConfiguration.loadConfiguration(permissionsFile);
         playerPermissions.clear();
+        permissionCache.clear();
 
         ConfigurationSection permsSection = permissionsConfig.getConfigurationSection("permissions");
         if (permsSection != null) {
