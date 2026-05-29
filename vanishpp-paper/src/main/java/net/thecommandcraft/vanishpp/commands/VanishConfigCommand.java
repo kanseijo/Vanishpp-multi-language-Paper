@@ -6,10 +6,12 @@ import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.thecommandcraft.vanishpp.Vanishpp;
+import net.thecommandcraft.vanishpp.gui.ConfigGUI;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
 import org.bukkit.util.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -22,6 +24,7 @@ import java.util.Set;
 public class VanishConfigCommand implements CommandExecutor, TabCompleter {
 
     private final Vanishpp plugin;
+    private final ConfigGUI configGUI;
 
     private static final Set<String> SENSITIVE_PREFIXES = Set.of(
             "storage.type", "storage.mysql.", "storage.redis.", "storage.postgresql.",
@@ -29,6 +32,7 @@ public class VanishConfigCommand implements CommandExecutor, TabCompleter {
 
     public VanishConfigCommand(Vanishpp plugin) {
         this.plugin = plugin;
+        this.configGUI = new ConfigGUI(plugin);
     }
 
     private boolean isSensitive(String path) {
@@ -45,6 +49,16 @@ public class VanishConfigCommand implements CommandExecutor, TabCompleter {
         if (!sender.hasPermission("vanishpp.config")) {
             plugin.getMessageManager().sendMessage(sender,
                     plugin.getConfigManager().getLanguageManager().getMessage("unknown-command"));
+            return true;
+        }
+
+        // GUI subcommand
+        if (args.length >= 1 && args[0].equalsIgnoreCase("gui")) {
+            if (!(sender instanceof Player player)) {
+                plugin.getMessageManager().sendMessage(sender, "§cOnly players can use the config GUI.");
+                return true;
+            }
+            configGUI.open(player);
             return true;
         }
 
