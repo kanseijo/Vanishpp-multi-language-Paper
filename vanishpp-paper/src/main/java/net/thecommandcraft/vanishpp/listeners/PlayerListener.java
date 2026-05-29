@@ -638,10 +638,10 @@ public class PlayerListener implements Listener {
             }
 
             if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-                // Check if clicking a container — must be explicitly blocked
                 Block clickedBlock = event.getClickedBlock();
                 if (clickedBlock != null) {
                     Material blockType = clickedBlock.getType();
+                    // Only block containers if CAN_INTERACT rule is OFF
                     boolean isContainer = blockType == Material.CHEST ||
                             blockType == Material.TRAPPED_CHEST ||
                             blockType == Material.ENDER_CHEST ||
@@ -650,10 +650,11 @@ public class PlayerListener implements Listener {
                             blockType == Material.DISPENSER ||
                             blockType == Material.DROPPER ||
                             blockType.name().endsWith("SHULKER_BOX");
-                    if (isContainer) {
+                    if (isContainer && !rules.getRule(p, RuleManager.CAN_INTERACT)) {
                         event.setCancelled(true);
                         event.setUseItemInHand(Event.Result.DENY);
-                        return;  // Don't process as silent chest
+                        sendRuleDeny(p, RuleManager.CAN_INTERACT, "container access");
+                        return;
                     }
                 }
                 handleSilentChest(event);
