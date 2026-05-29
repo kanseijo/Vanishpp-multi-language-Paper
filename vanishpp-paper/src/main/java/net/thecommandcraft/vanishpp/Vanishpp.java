@@ -985,14 +985,12 @@ public class Vanishpp extends JavaPlugin implements Listener {
 
             // Apply immediately for smooth manual vanish
             player.setAllowFlight(true);
-            player.setFlying(true);
 
             // Re-enforce after 1 second to override plugins like AuthMe that reset flight on login
             vanishScheduler.runLaterGlobal(() -> {
                 if (player.isOnline() && isVanished(player)) {
-                    if (!player.getAllowFlight() || !player.isFlying()) {
+                    if (!player.getAllowFlight()) {
                         player.setAllowFlight(true);
-                        player.setFlying(true);
                     }
                 }
             }, 20L);
@@ -1371,7 +1369,6 @@ public class Vanishpp extends JavaPlugin implements Listener {
         // Fly
         if (configManager.enableFly && player.getGameMode() != GameMode.SPECTATOR) {
             player.setAllowFlight(true);
-            player.setFlying(true);
         }
 
         // Night vision
