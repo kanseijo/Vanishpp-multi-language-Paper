@@ -33,15 +33,16 @@ public class ConfigRenderer {
     private static final Material NAVIGATION = Material.GRAY_STAINED_GLASS;
 
     /**
-     * Build the inventory for a specific category and page.
+     * Build the inventory for a specific category and page, returning both inventory and slot mapping.
      *
      * @param category Current category to display
      * @param page Current page number
-     * @return Inventory with proper layout
+     * @return Object array: [Inventory, Map<Integer slot, String key>]
      */
-    public Inventory buildCategoryInventory(String category, int page) {
+    public Object[] buildCategoryInventory(String category, int page) {
         String title = "§6Vanish++ Config — " + category;
         Inventory inv = Bukkit.createInventory(null, INVENTORY_SIZE, Component.text(title));
+        Map<Integer, String> slotToKey = new HashMap<>();
 
         // Row 0: Category tabs
         placeCategoryTabs(inv, category);
@@ -49,12 +50,12 @@ public class ConfigRenderer {
         // Rows 2+: Settings with wrapping layout
         ConfigCategory cat = ConfigCategory.valueOf(category);
         List<ConfigCategory.ConfigValue> settings = new ArrayList<>(cat.getSettings().values());
-        placeSettings(inv, settings, page);
+        placeSettings(inv, settings, page, slotToKey);
 
         // Row 5: Navigation buttons
         placeNavigation(inv, page, settings.size());
 
-        return inv;
+        return new Object[]{inv, slotToKey};
     }
 
     /**
@@ -88,7 +89,8 @@ public class ConfigRenderer {
     /**
      * Place settings with wrapping layout and pagination.
      */
-    private void placeSettings(Inventory inv, List<ConfigCategory.ConfigValue> allSettings, int page) {
+    private void placeSettings(Inventory inv, List<ConfigCategory.ConfigValue> allSettings, int page,
+                               Map<Integer, String> slotToKey) {
         int itemsPerPage = (3 * 9) - 2;  // 3 rows, minus indent adjustments
         int startIndex = page * itemsPerPage;
         int endIndex = Math.min(startIndex + itemsPerPage, allSettings.size());
@@ -109,11 +111,12 @@ public class ConfigRenderer {
                 colInRow = 0;
             }
 
-            // Safety check: don't overflow inventory
+            // Safety check: don't overflow inventory (BEFORE placing item)
             if (slot >= NAVIGATION_ROW * 9) break;
 
             ItemStack setting = createSettingItem(value);
             inv.setItem(slot, setting);
+            slotToKey.put(slot, value.key);  // Track slot->key mapping
 
             slot++;
             colInRow++;
@@ -261,10 +264,9 @@ public class ConfigRenderer {
      * Get category name from tab slot.
      */
     public String getCategoryFromSlot(int slot) {
-        int index = slot;
-        for (ConfigCategory cat : ConfigCategory.values()) {
-            if (index == 0) return cat.name();
-            index--;
+        ConfigCategory[] cats = ConfigCategory.values();
+        if (slot >= 0 && slot < cats.length) {
+            return cats[slot].name();
         }
         return null;
     }

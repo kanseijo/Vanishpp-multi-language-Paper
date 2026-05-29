@@ -40,13 +40,6 @@ public class MobAiManager {
                     try {
                         mob.getPathfinder().stopPathfinding();
                     } catch (Throwable ignored) {}
-
-                    // Force clear all goals that might reference the player
-                    // This prevents any residual tracking/looking behavior
-                    try {
-                        // Clear brain memories (for newer versions)
-                        mob.clearLootTable();
-                    } catch (Throwable ignored) {}
                 }
             }
         }

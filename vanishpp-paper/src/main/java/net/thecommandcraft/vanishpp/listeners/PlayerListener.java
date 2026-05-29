@@ -638,12 +638,19 @@ public class PlayerListener implements Listener {
             }
 
             if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-                // Check if clicking a chest (single or double) — must be explicitly blocked
+                // Check if clicking a container — must be explicitly blocked
                 Block clickedBlock = event.getClickedBlock();
                 if (clickedBlock != null) {
                     Material blockType = clickedBlock.getType();
-                    // Block all chest types (including trapped chests and double chests)
-                    if (blockType == Material.CHEST || blockType == Material.TRAPPED_CHEST) {
+                    boolean isContainer = blockType == Material.CHEST ||
+                            blockType == Material.TRAPPED_CHEST ||
+                            blockType == Material.ENDER_CHEST ||
+                            blockType == Material.BARREL ||
+                            blockType == Material.HOPPER ||
+                            blockType == Material.DISPENSER ||
+                            blockType == Material.DROPPER ||
+                            blockType.name().endsWith("SHULKER_BOX");
+                    if (isContainer) {
                         event.setCancelled(true);
                         event.setUseItemInHand(Event.Result.DENY);
                         return;  // Don't process as silent chest

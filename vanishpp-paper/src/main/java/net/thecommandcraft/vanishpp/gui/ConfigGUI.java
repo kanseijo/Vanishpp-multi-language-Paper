@@ -27,14 +27,18 @@ public class ConfigGUI implements Listener {
     private final ConfigRenderer renderer;
     private final Map<UUID, String> playerCategory;
     private final Map<UUID, Integer> playerPage;
+    private final Map<UUID, Map<Integer, String>> slotToKeyMapping;  // Track slot->key for each player
     private final Set<UUID> openViewers;
+    private final Map<UUID, Long> lastBoundarySound;  // Cooldown for boundary sound spam
 
     public ConfigGUI(Vanishpp plugin) {
         this.plugin = plugin;
         this.renderer = new ConfigRenderer();
         this.playerCategory = new ConcurrentHashMap<>();
         this.playerPage = new ConcurrentHashMap<>();
+        this.slotToKeyMapping = new ConcurrentHashMap<>();
         this.openViewers = ConcurrentHashMap.newKeySet();
+        this.lastBoundarySound = new ConcurrentHashMap<>();
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
@@ -62,7 +66,12 @@ public class ConfigGUI implements Listener {
         String category = playerCategory.getOrDefault(uuid, "GENERAL");
         int page = playerPage.getOrDefault(uuid, 0);
 
-        Inventory inv = renderer.buildCategoryInventory(category, page);
+        Object[] result = renderer.buildCategoryInventory(category, page);
+        Inventory inv = (Inventory) result[0];
+        @SuppressWarnings("unchecked")
+        Map<Integer, String> slotToKey = (Map<Integer, String>) result[1];
+
+        slotToKeyMapping.put(uuid, slotToKey);
         player.openInventory(inv);
     }
 
@@ -76,8 +85,14 @@ public class ConfigGUI implements Listener {
 
         if (!openViewers.contains(uuid)) return;
         String title = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
-                .legacySection().serialize(event.getView().title());
-        if (!title.contains("Config")) return;
+                .legacySection().serialize(event.getView().title()).toLowerCase();
+        if (!title.contains("config")) return;  // Case-insensitive check
+
+        // Re-check permission in case player lost it while GUI was open
+        if (!player.hasPermission("vanishpp.config")) {
+            player.closeInventory();
+            return;
+        }
 
         event.setCancelled(true);
 
@@ -132,20 +147,15 @@ public class ConfigGUI implements Listener {
      */
     private void handleSettingClick(Player player, int slot, boolean isRightClick, boolean isShiftClick) {
         UUID uuid = player.getUniqueId();
+
+        Map<Integer, String> slotToKey = slotToKeyMapping.getOrDefault(uuid, new HashMap<>());
+        String key = slotToKey.get(slot);
+        if (key == null) return;
+
         String category = playerCategory.getOrDefault(uuid, "GENERAL");
-        int page = playerPage.getOrDefault(uuid, 0);
-
         ConfigCategory cat = ConfigCategory.valueOf(category);
-        List<ConfigCategory.ConfigValue> settings = new ArrayList<>(cat.getSettings().values());
-
-        int itemsPerPage = (3 * 9) - 2;
-        int startIndex = page * itemsPerPage;
-
-        // Calculate which setting was clicked
-        int settingIndex = calculateSettingIndex(slot, startIndex);
-        if (settingIndex < 0 || settingIndex >= settings.size()) return;
-
-        ConfigCategory.ConfigValue value = settings.get(settingIndex);
+        ConfigCategory.ConfigValue value = cat.getSettings().get(key);
+        if (value == null) return;
 
         if (value.type.isBoolean()) {
             handleBooleanClick(player, value);
@@ -162,6 +172,7 @@ public class ConfigGUI implements Listener {
      */
     private void handleBooleanClick(Player player, ConfigCategory.ConfigValue value) {
         Object current = plugin.getConfigManager().getConfig().get(value.key);
+        if (current == null) current = value.defaultValue;
         boolean newValue = !(current instanceof Boolean && (Boolean) current);
 
         saveConfig(player, value.key, newValue);
@@ -178,7 +189,12 @@ public class ConfigGUI implements Listener {
 
         // Enforce min/max bounds
         if (newValue < value.minBound || newValue > value.maxBound) {
-            playSound(player, ConfigSound.BOUNDARY);
+            long now = System.currentTimeMillis();
+            long lastTime = lastBoundarySound.getOrDefault(player.getUniqueId(), 0L);
+            if (now - lastTime > 100) {  // Max 1 sound per 100ms
+                playSound(player, ConfigSound.BOUNDARY);
+                lastBoundarySound.put(player.getUniqueId(), now);
+            }
             return;
         }
 
@@ -192,15 +208,20 @@ public class ConfigGUI implements Listener {
     private void saveConfig(Player player, String key, Object value) {
         try {
             plugin.getConfigManager().setAndSave(key, value);
-
-            // Proxy sync if available
-            var bridge = plugin.getProxyBridge();
-            if (bridge != null && bridge.isProxyDetected()) {
-                bridge.sendConfigSync(Map.of(key, String.valueOf(value)));
-            }
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to save config " + key + ": " + e.getMessage());
             playSound(player, ConfigSound.ERROR);
+            return;
+        }
+
+        // Proxy sync if available (separate error handling)
+        var bridge = plugin.getProxyBridge();
+        if (bridge != null && bridge.isProxyDetected()) {
+            try {
+                bridge.sendConfigSync(Map.of(key, String.valueOf(value)));
+            } catch (Exception e) {
+                plugin.getLogger().warning("Proxy sync failed for " + key + ": " + e.getMessage());
+            }
         }
     }
 
@@ -237,28 +258,6 @@ public class ConfigGUI implements Listener {
     }
 
     /**
-     * Calculate which setting in the list corresponds to a clicked slot.
-     */
-    private int calculateSettingIndex(int slot, int startIndex) {
-        int row = slot / 9;
-        int col = slot % 9;
-
-        // Row 2-4: Settings
-        int relativeRow = row - 2;
-        int settingOffset = 0;
-
-        if (relativeRow == 0) {
-            settingOffset = col;
-        } else if (relativeRow == 1) {
-            settingOffset = 7 + (col - 2);  // 2-indent wrapping
-        } else if (relativeRow == 2) {
-            settingOffset = 7 + 7 + (col - 2);  // Second wrap
-        }
-
-        return startIndex + settingOffset;
-    }
-
-    /**
      * Handle inventory close event.
      */
     @EventHandler
@@ -267,6 +266,8 @@ public class ConfigGUI implements Listener {
         openViewers.remove(uuid);
         playerCategory.remove(uuid);
         playerPage.remove(uuid);
+        slotToKeyMapping.remove(uuid);
+        lastBoundarySound.remove(uuid);
     }
 
     /**
