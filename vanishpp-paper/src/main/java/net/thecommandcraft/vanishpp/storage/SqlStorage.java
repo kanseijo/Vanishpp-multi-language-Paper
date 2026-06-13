@@ -105,32 +105,6 @@ public class SqlStorage implements StorageProvider {
         }
 
         if (version < 3) {
-            try (Statement st = conn.createStatement()) {
-                // v3: rule presets, preferences, history, stats tables
-                st.execute("CREATE TABLE IF NOT EXISTS vpp_rule_presets ("
-                        + "uuid VARCHAR(36), preset_name VARCHAR(64), rule_key VARCHAR(64), rule_value TEXT,"
-                        + "PRIMARY KEY(uuid, preset_name, rule_key))");
-                st.execute("CREATE TABLE IF NOT EXISTS vpp_preferences ("
-                        + "uuid VARCHAR(36), pref_key VARCHAR(64), pref_value TEXT,"
-                        + "PRIMARY KEY(uuid, pref_key))");
-                st.execute("CREATE TABLE IF NOT EXISTS vpp_history ("
-                        + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
-                        + "uuid VARCHAR(36) NOT NULL,"
-                        + "player_name VARCHAR(64),"
-                        + "action VARCHAR(16) NOT NULL,"
-                        + "timestamp BIGINT NOT NULL,"
-                        + "server VARCHAR(64),"
-                        + "reason TEXT,"
-                        + "duration_ms BIGINT DEFAULT 0,"
-                        + "INDEX idx_hist_uuid (uuid),"
-                        + "INDEX idx_hist_ts (timestamp))");
-                st.execute("CREATE TABLE IF NOT EXISTS vpp_stats ("
-                        + "uuid VARCHAR(36) PRIMARY KEY,"
-                        + "total_ms BIGINT DEFAULT 0,"
-                        + "vanish_count INT DEFAULT 0,"
-                        + "longest_ms BIGINT DEFAULT 0)");
-            }
-            // PostgreSQL uses SERIAL / SEQUENCE instead of AUTO_INCREMENT
             if (type.equals("postgresql")) {
                 try (Statement st = conn.createStatement()) {
                     st.execute("CREATE TABLE IF NOT EXISTS vpp_rule_presets ("
@@ -151,6 +125,32 @@ public class SqlStorage implements StorageProvider {
                             + "duration_ms BIGINT DEFAULT 0)");
                     st.execute("CREATE INDEX IF NOT EXISTS idx_hist_uuid ON vpp_history(uuid)");
                     st.execute("CREATE INDEX IF NOT EXISTS idx_hist_ts  ON vpp_history(timestamp)");
+                    st.execute("CREATE TABLE IF NOT EXISTS vpp_stats ("
+                            + "uuid VARCHAR(36) PRIMARY KEY,"
+                            + "total_ms BIGINT DEFAULT 0,"
+                            + "vanish_count INT DEFAULT 0,"
+                            + "longest_ms BIGINT DEFAULT 0)");
+                }
+            } else {
+                try (Statement st = conn.createStatement()) {
+                    // v3: rule presets, preferences, history, stats tables (MySQL / H2)
+                    st.execute("CREATE TABLE IF NOT EXISTS vpp_rule_presets ("
+                            + "uuid VARCHAR(36), preset_name VARCHAR(64), rule_key VARCHAR(64), rule_value TEXT,"
+                            + "PRIMARY KEY(uuid, preset_name, rule_key))");
+                    st.execute("CREATE TABLE IF NOT EXISTS vpp_preferences ("
+                            + "uuid VARCHAR(36), pref_key VARCHAR(64), pref_value TEXT,"
+                            + "PRIMARY KEY(uuid, pref_key))");
+                    st.execute("CREATE TABLE IF NOT EXISTS vpp_history ("
+                            + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                            + "uuid VARCHAR(36) NOT NULL,"
+                            + "player_name VARCHAR(64),"
+                            + "action VARCHAR(16) NOT NULL,"
+                            + "timestamp BIGINT NOT NULL,"
+                            + "server VARCHAR(64),"
+                            + "reason TEXT,"
+                            + "duration_ms BIGINT DEFAULT 0,"
+                            + "INDEX idx_hist_uuid (uuid),"
+                            + "INDEX idx_hist_ts (timestamp))");
                     st.execute("CREATE TABLE IF NOT EXISTS vpp_stats ("
                             + "uuid VARCHAR(36) PRIMARY KEY,"
                             + "total_ms BIGINT DEFAULT 0,"
