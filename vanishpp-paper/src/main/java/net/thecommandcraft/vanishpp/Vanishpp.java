@@ -343,8 +343,8 @@ public class Vanishpp extends JavaPlugin implements Listener {
             try {
                 int major = Integer.parseInt(parts[0]);
                 int minor = Integer.parseInt(parts[1]);
-                // Supported: 1.21.x (any subversion)
-                if (major == 1 && minor == 21) {
+                // Supported: 1.21.x or 26.x.x (Minecraft 2026 year-based naming scheme)
+                if ((major == 1 && minor == 21) || major == 26) {
                     supported = true;
                 }
             } catch (NumberFormatException ignored) {
@@ -355,7 +355,7 @@ public class Vanishpp extends JavaPlugin implements Listener {
             getLogger().info("Minecraft version: " + mcVersion + " (supported).");
         } else {
             getLogger().warning("Minecraft version: " + mcVersion + " — this version has NOT been tested with Vanish++.");
-            getLogger().warning("Vanish++ is built and tested for Minecraft 1.21 — 1.21.11. Running on " + mcVersion);
+            getLogger().warning("Vanish++ is built and tested for Minecraft 1.21 — 1.21.11 and 26.x.x. Running on " + mcVersion);
             getLogger().warning("may cause unexpected behavior or errors. Proceed at your own risk.");
         }
     }
