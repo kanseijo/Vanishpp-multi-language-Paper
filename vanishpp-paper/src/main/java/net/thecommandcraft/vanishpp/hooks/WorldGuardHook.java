@@ -38,8 +38,13 @@ public class WorldGuardHook {
         this.plugin = plugin;
     }
 
-    /** Register flags with WorldGuard's flag registry. Call during plugin enable. */
-    public void load() {
+    /**
+     * Register flags with WorldGuard's flag registry.
+     * Must be called from {@code JavaPlugin.onLoad()} — WorldGuard 7.0.12+ locks the registry
+     * before {@code onEnable()} runs, so calling this any later throws
+     * "New flags cannot be registered at this time".
+     */
+    public static void registerFlags() {
         FlagRegistry registry = WorldGuard.getInstance().getFlagRegistry();
 
         DENY_VANISH   = registerOrFetch(registry, "vanishpp-deny-vanish",   StateFlag.State.DENY);
@@ -47,7 +52,7 @@ public class WorldGuardHook {
         DENY_UNVANISH = registerOrFetch(registry, "vanishpp-deny-unvanish", StateFlag.State.DENY);
     }
 
-    private StateFlag registerOrFetch(FlagRegistry registry, String name, StateFlag.State def) {
+    private static StateFlag registerOrFetch(FlagRegistry registry, String name, StateFlag.State def) {
         try {
             StateFlag flag = new StateFlag(name, def == StateFlag.State.ALLOW);
             registry.register(flag);

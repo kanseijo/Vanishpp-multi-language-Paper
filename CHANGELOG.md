@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.8] - 2026-06-13
+
+### Fixed
+- **WorldGuard Hook Fails on 7.0.12+:** Custom region flags (`vanishpp-deny-vanish`, `vanishpp-force-vanish`, `vanishpp-deny-unvanish`) are now registered in `JavaPlugin.onLoad()` instead of `onEnable()`. WorldGuard 7.0.12+ locks the flag registry before `onEnable()` runs, causing the previous "New flags cannot be registered at this time" error and disabling the WorldGuard integration entirely. Fixes GitHub issue #16.
+
+### Changed
+- **Compile dependency WorldGuard:** `7.0.9` → `7.0.16`.
+- **Test docker environment:** Updated all servers from Minecraft 1.21.11 to **26.1.2** (Paper, Purpur, Folia, Spigot, Bukkit).
+
+---
+
 ## [1.1.8] - 2026-04-19
 
 ### Added

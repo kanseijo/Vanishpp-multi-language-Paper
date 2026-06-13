@@ -183,7 +183,8 @@ Vanish++ is built for modern ecosystems.
 ### Supported Versions
 | Minecraft Version      | Status               | Notes                                                              |
 | :--------------------- | :------------------- | :----------------------------------------------------------------- |
-| **1.21 — 1.21.11**    | ✅ Supported         | Native support. Built against Paper 1.21 API, tested on 1.21.11.  |
+| **26.1.2**            | ✅ Supported         | Tested on Paper 26.1.2 (2026 year-based versioning).              |
+| **1.21 — 1.21.11**    | ✅ Supported         | Tested on Paper 1.21.11. Built against Paper 1.21 API.            |
 | **1.20.4 and older**  | ❌ Unsupported       | Incompatible API changes. Use older Vanish++ versions.             |
 
 ### Supported Platforms
@@ -191,7 +192,7 @@ Vanish++ is built for modern ecosystems.
 | :------------------ | :------------------- | :----------------------------------------------------------------- |
 | **Paper**           | ✅ Recommended       | Best performance. Required for full physics/projectile support.    |
 | **Purpur**          | ✅ Supported         | Fully compatible (Paper fork).                                     |
-| **Folia**           | ✅ Supported         | Multi-region scheduler bridge with automatic runtime detection. Full support for regional execution. Tested on 1.21.x. |
+| **Folia**           | ✅ Supported         | Multi-region scheduler bridge with automatic runtime detection. Full support for regional execution. Tested on 26.1.2. |
 | **Spigot**          | ⚠️ Compatible        | Works, but Paper-specific features (projectile passthrough) degrade. |
 | **Bukkit**          | ⚠️ Compatible        | Same limitations as Spigot.                                        |
 

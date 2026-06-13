@@ -101,6 +101,19 @@ public class Vanishpp extends JavaPlugin implements Listener {
     private net.thecommandcraft.vanishpp.scoreboard.VanishBossbar vanishBossbar;
 
     @Override
+    public void onLoad() {
+        // WorldGuard 7.0.12+ locks the flag registry before onEnable() runs.
+        // Flags must be registered here, during the load phase.
+        if (getServer().getPluginManager().getPlugin("WorldGuard") != null) {
+            try {
+                net.thecommandcraft.vanishpp.hooks.WorldGuardHook.registerFlags();
+            } catch (Throwable e) {
+                getLogger().warning("WorldGuard flag pre-registration failed: " + e.getMessage());
+            }
+        }
+    }
+
+    @Override
     public void onEnable() {
         // 0. Folia Detection
         // Primary: server name — Paper 1.21+ added RegionScheduler to its API so class-presence
@@ -195,7 +208,6 @@ public class Vanishpp extends JavaPlugin implements Listener {
         if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null) {
             try {
                 this.worldGuardHook = new WorldGuardHook(this);
-                this.worldGuardHook.load();
                 getLogger().info("WorldGuard integration enabled.");
             } catch (Throwable e) {
                 getLogger().warning("WorldGuard found but hook failed: " + e.getMessage());
