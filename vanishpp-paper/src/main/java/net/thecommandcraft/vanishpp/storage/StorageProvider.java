@@ -76,4 +76,7 @@ public interface StorageProvider {
     VanishStats getStats(UUID uuid);
 
     void recordVanishSession(UUID uuid, long durationMs);
+
+    /** Overwrites the stored stats for a player. Used only during storage migration. */
+    void setStats(UUID uuid, VanishStats stats);
 }

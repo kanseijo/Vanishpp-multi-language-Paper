@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.8] - 2026-06-14
+
+### Fixed
+- **LPC/HoverChat Chat Leak:** Vanished players' chat messages were visible to all players when using chat plugins like LuckPerms Chat or HoverChat. The `AsyncChatEvent` handler was registered at `LOWEST` priority, allowing those plugins to process and broadcast the message before VPP could cancel it. Priority raised to `HIGH` so cancellation takes effect after third-party chat formatters run.
+
 ## [1.1.8] - 2026-06-13
 
 ### Fixed

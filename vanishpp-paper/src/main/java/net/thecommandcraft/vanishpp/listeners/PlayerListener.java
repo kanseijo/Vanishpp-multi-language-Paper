@@ -396,7 +396,7 @@ public class PlayerListener implements Listener {
         plugin.cleanupPlayerCache(uuid);
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.HIGH)
     public void onChat(AsyncChatEvent event) {
         Player player = event.getPlayer();
         if (plugin.isVanished(player)) {
