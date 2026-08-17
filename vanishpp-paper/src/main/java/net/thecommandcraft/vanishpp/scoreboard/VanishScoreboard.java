@@ -117,6 +117,7 @@ public class VanishScoreboard {
      */
     public void reassert(Player player) {
         if (!plugin.getConfigManager().scoreboardEnabled) return;
+        if (!plugin.isVanished(player)) return; // board only applies to vanished players
         if (manuallyHidden.contains(player.getUniqueId())) return;
         if (!player.hasPermission("vanishpp.scoreboard")) return;
         if (player.hasPermission("vanishpp.scoreboard.bypass")) return;
