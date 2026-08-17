@@ -396,3 +396,12 @@ gui:
         unvanish-disable-fly: "Disable flight on unvanish"
       invisibility-features:
         prevent-sleeping: "Prevent sleeping while vanished"
+
+# --- [ VANISH APPEARANCE (multilingual overrides) ] ---
+# Used when the config.yml value is left at its built-in default.
+vanish-appearance:
+  tab-prefix: "&7[VANISHED] "
+
+# --- [ BOSSBAR (multilingual overrides) ] ---
+bossbar:
+  title: "&7[Vanished]"

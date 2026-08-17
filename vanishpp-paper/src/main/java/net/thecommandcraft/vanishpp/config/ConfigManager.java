@@ -190,7 +190,11 @@ public class ConfigManager {
 
         staffNotifyEnabled = config.getBoolean("messages.staff-notify.enabled", true);
 
+        // Tab 前缀：管理员未自定义（等于内置默认）时使用语言文件的多语言值
         vanishTabPrefix = config.getString("vanish-appearance.tab-prefix", "&7[VANISHED] ");
+        if ("&7[VANISHED] ".equals(vanishTabPrefix)) {
+            vanishTabPrefix = languageManager.getMessage("vanish-appearance.tab-prefix");
+        }
         vanishNametagPrefix = config.getString("vanish-appearance.nametag-prefix", "");
         staffGlowEnabled = config.getBoolean("vanish-appearance.staff-glow", true);
         actionBarEnabled = config.getBoolean("vanish-appearance.action-bar.enabled", true);
@@ -268,7 +272,11 @@ public class ConfigManager {
         webhookAuthHeader = config.getString("webhook.authorization", "");
 
         bossbarEnabled = config.getBoolean("bossbar.enabled", false);
+        // Boss 血条标题：管理员未自定义（等于内置默认）时使用语言文件的多语言值
         bossbarTitle = config.getString("bossbar.title", "<gold>✦ You are <red>Vanished</red></gold>");
+        if ("<gold>✦ You are <red>Vanished</red></gold>".equals(bossbarTitle) || "&7[Vanished]".equals(bossbarTitle)) {
+            bossbarTitle = languageManager.getMessage("bossbar.title");
+        }
         bossbarColor = config.getString("bossbar.color", "GOLD");
         bossbarStyle = config.getString("bossbar.style", "PROGRESS");
     }

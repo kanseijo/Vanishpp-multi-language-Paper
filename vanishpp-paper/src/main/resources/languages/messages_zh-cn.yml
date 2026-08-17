@@ -366,3 +366,12 @@ gui:
         unvanish-disable-fly: '取消隐身时禁用飞行'
       invisibility-features:
         prevent-sleeping: '隐身时禁止睡觉'
+
+# --- [ 隐身外观（多语言） ] ---
+# 当 config.yml 保持内置默认值时使用。
+vanish-appearance:
+  tab-prefix: '&7[已隐身] '
+
+# --- [ Boss 血条（多语言） ] ---
+bossbar:
+  title: '&7[已隐身]'
