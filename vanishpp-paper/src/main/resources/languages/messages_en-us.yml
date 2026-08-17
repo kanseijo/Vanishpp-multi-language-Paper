@@ -37,6 +37,12 @@ update:
   hide-beta-hover: "&7Click to stop receiving beta update notifications.\n&8Runs: /vconfig update-checker.show-beta false"
   hide-alpha: "&8[&7Don't notify me about alpha builds&8]"
   hide-alpha-hover: "&7Click to stop receiving alpha update notifications.\n&8Runs: /vconfig update-checker.show-alpha false"
+  proxy-available: "&a&lVanish++ Proxy Update Available!"
+  proxy-note: "&7An update is available on the proxy."
+  proxy-current: "&7Current: &c%version%"
+  proxy-latest: "&7Latest: &a%version%"
+  proxy-download: "&6&l[CLICK TO DOWNLOAD]"
+  proxy-hover: "&eGo to Modrinth Version %version%"
 
 # --- [ CHAT ] ---
 chat:
@@ -98,6 +104,8 @@ config:
   proxy-mismatch-line2: "The following settings are out of sync:"
   proxy-mismatch-line3: "Apply them to the proxy or dismiss this warning."
   proxy-applied: "&aApplied %count% config setting(s) to the proxy."
+  proxy-not-connected: "&cNot connected to the proxy."
+  proxy-nothing-to-sync: "&cNothing to sync with the proxy."
   gui-only-players: "&cOnly players can use the config GUI."
   proxy-synced: "&aConfig change synced to proxy."
 
@@ -296,38 +304,6 @@ changelog:
     - " &8• &cFixed&7: Mass disconnect on unvanish (glow packet race + packet burst)"
   footer: "&7-------------------------------"
 
-# --- [ DOWNGRADE ] ---
-# Used by /vdowngrade command (SQL storage only)
-downgrade:
-  no-permission: "&cNo permission."
-  not-active: "&aNo downgrade situation is currently active."
-  sql-required: "&cThis command requires SQL storage."
-  usage: "&eUsage: /vdowngrade <info|allow|reset [confirm]>"
-  info-border: "&6┌─────────────────────────────────────────────┐"
-  info-title: "&6&l│  VANISH++ DOWNGRADE — DATA AT STAKE          │"
-  info-db-version: "&6│  DB version: &c%version%"
-  info-running: "&6│  Running:    &e%version%"
-  info-stats-line: "&7│  %stat%: &f%count%"
-  info-reset-warning: "&c│  Resetting will delete ALL of the above.     │"
-  info-suspended: "&7│  All DB writes are currently SUSPENDED.      │"
-  button-allow: "&e&l[ Allow writes (risky) ]"
-  button-reset: "&c&l[ Reset DB (fresh start) ]"
-  hover-allow: "&cLets the older plugin write to the DB.\nData may be corrupted."
-  hover-reset: "&6Wipes all Vanish++ data from the DB\nand starts fresh."
-  allow-success: "&eDB writes resumed. The plugin is now running on a DB from a newer version. Proceed with caution."
-  reset-confirm-warning: "&c&l⚠ This will permanently delete all data shown above."
-  reset-confirm-button: "&c&l[ WIPE DATABASE AND START FRESH ]"
-  hover-reset-confirm: "&cThis cannot be undone!"
-  reset-start: "&eWiping all Vanish++ data from the database..."
-  reset-complete: "&aDatabase reset complete. All writes are now active."
-
-# --- [ SCOREBOARD COMMAND ] ---
-scoreboard:
-  command:
-    only-players: "&cThis command can only be used by players."
-    disabled: "&cThe vanish scoreboard is disabled in config.yml."
-    enabled: "&aVanish scoreboard enabled."
-    disabled: "&cVanish scoreboard disabled."
 # --- [ RULE PRESETS ] ---
 rules-preset:
   usage: "&cUsage: /vrules preset <save|load|list|delete> [name]"
@@ -347,6 +323,19 @@ gui:
     status-enabled: "&a✔ ENABLED"
     status-disabled: "&c✘ DISABLED"
     toggle-hint: "&7Click to toggle"
+    names:
+      can_break_blocks: "Break Blocks"
+      can_place_blocks: "Place Blocks"
+      can_hit_entities: "Hit Entities"
+      can_pickup_items: "Pickup Items"
+      can_drop_items: "Drop Items"
+      can_trigger_physical: "Trigger Physical"
+      can_interact: "Interact"
+      can_throw: "Throw"
+      can_chat: "Chat"
+      mob_targeting: "Mob Targeting"
+      show_notifications: "Show Notifications"
+      spectator_gamemode: "Spectator Gamemode"
   admin-dashboard:
     title: "&6Vanish++ Admin Dashboard"
     level: "&bLevel: %level%"

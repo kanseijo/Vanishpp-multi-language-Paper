@@ -83,13 +83,21 @@ public class RulesGUI implements Listener {
         Player target = Bukkit.getPlayer(targetUuid);
         if (target == null) { viewer.closeInventory(); return; }
 
-        // Extract rule name from item name
-        String displayName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
-                .legacySection().serialize(meta.displayName());
-        // Display name format: "§acan_break_blocks" or "§ccan_break_blocks"
-        String ruleName = displayName.replaceAll("§[0-9a-fk-or]", "").trim();
-
-        if (!plugin.getRuleManager().getAvailableRules().contains(ruleName)) return;
+        // Extract rule key from the hidden lore carrier — the display name is now a
+        // translated string and can no longer be parsed back into a rule key.
+        String ruleName = null;
+        List<Component> lore = meta.lore();
+        if (lore != null) {
+            for (Component line : lore) {
+                String text = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                        .legacySection().serialize(line);
+                if (text.startsWith("§8RULE: ")) {
+                    ruleName = text.substring("§8RULE: ".length()).trim();
+                    break;
+                }
+            }
+        }
+        if (ruleName == null || !plugin.getRuleManager().getAvailableRules().contains(ruleName)) return;
         if (!viewer.hasPermission("vanishpp.rules")
                 && (!viewer.equals(target) || !viewer.hasPermission("vanishpp.rules.others"))) return;
 
@@ -113,10 +121,14 @@ public class RulesGUI implements Listener {
         ItemStack item = new ItemStack(mat);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(Component.text(rule, enabled ? NamedTextColor.GREEN : NamedTextColor.RED)
+            meta.displayName(plugin.getMessageManager().parse(getRuleDisplayName(rule), null)
+                    .colorIfAbsent(enabled ? NamedTextColor.GREEN : NamedTextColor.RED)
                     .decoration(TextDecoration.ITALIC, false));
             String statusKey = enabled ? "gui.rules.status-enabled" : "gui.rules.status-disabled";
             meta.lore(List.of(
+                    // Hidden rule-key carrier read back by onClick() — the display name
+                    // itself is now translated, so it can no longer be parsed back to a key.
+                    Component.text("§8RULE: " + rule).decoration(TextDecoration.ITALIC, false),
                     plugin.getMessageManager().parse(plugin.getLanguageManager().getMessage(statusKey), null)
                             .decoration(TextDecoration.ITALIC, false),
                     plugin.getMessageManager().parse(plugin.getLanguageManager().getMessage("gui.rules.toggle-hint"), null)
@@ -125,6 +137,15 @@ public class RulesGUI implements Listener {
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    /** Translated rule display name from the language file, falling back to the raw rule key. */
+    private String getRuleDisplayName(String rule) {
+        String msg = plugin.getLanguageManager().getMessage("gui.rules.names." + rule);
+        if (msg == null || msg.startsWith("<red>[Missing:")) {
+            return rule;
+        }
+        return msg;
     }
 
     private List<String> sortedRules() {

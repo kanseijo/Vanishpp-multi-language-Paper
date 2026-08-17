@@ -41,6 +41,12 @@ update:
   hide-alpha-hover: |-
     &7Click to stop receiving alpha update notifications.
     &8Runs: /vconfig update-checker.show-alpha false
+  proxy-available: '&a&lVanish++ 代理端有新版本可用！'
+  proxy-note: '&7代理端有可用更新。'
+  proxy-current: '&7当前版本：&c%version%'
+  proxy-latest: '&7最新版本：&a%version%'
+  proxy-download: '&6&l[点击下载]'
+  proxy-hover: '&e前往 Modrinth 版本 %version%'
 
 # --- [ 聊天 ] ---
 chat:
@@ -103,6 +109,8 @@ config:
   proxy-mismatch-line2: 以下设置不同步：
   proxy-mismatch-line3: 将它们应用到代理或忽略此警告。
   proxy-applied: '&a已将 %count% 个配置设置应用到代理。'
+  proxy-not-connected: '&c未连接到代理。'
+  proxy-nothing-to-sync: '&c没有要同步的代理配置。'
 
 # --- [ 插件列表 ] ---
 plugins:
@@ -317,6 +325,19 @@ gui:
     status-enabled: '&a✔ 已启用'
     status-disabled: '&c✘ 已禁用'
     toggle-hint: '&7点击切换'
+    names:
+      can_break_blocks: '破坏方块'
+      can_place_blocks: '放置方块'
+      can_hit_entities: '攻击实体'
+      can_pickup_items: '拾取物品'
+      can_drop_items: '丢弃物品'
+      can_trigger_physical: '触发物理'
+      can_interact: '交互'
+      can_throw: '投掷'
+      can_chat: '聊天'
+      mob_targeting: '怪物目标锁定'
+      show_notifications: '显示通知'
+      spectator_gamemode: '旁观游戏模式'
   admin-dashboard:
     title: '&6Vanish++ 管理员控制台'
     level: '&b等级：&f%level%'
