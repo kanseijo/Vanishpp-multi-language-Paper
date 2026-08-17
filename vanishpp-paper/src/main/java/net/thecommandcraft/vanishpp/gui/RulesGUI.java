@@ -7,6 +7,7 @@ import net.thecommandcraft.vanishpp.Vanishpp;
 import net.thecommandcraft.vanishpp.config.RuleManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -15,6 +16,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
 
@@ -36,9 +38,12 @@ public class RulesGUI implements Listener {
     private final Vanishpp plugin;
     /** viewer UUID → target player UUID */
     private final Map<UUID, UUID> openGuis = new HashMap<>();
+    /** NBT key carrying the rule id on each wool item — invisible, unlike a lore line. */
+    private final NamespacedKey ruleKey;
 
     public RulesGUI(Vanishpp plugin) {
         this.plugin = plugin;
+        this.ruleKey = new NamespacedKey(plugin, "vpp_rule");
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
@@ -83,20 +88,9 @@ public class RulesGUI implements Listener {
         Player target = Bukkit.getPlayer(targetUuid);
         if (target == null) { viewer.closeInventory(); return; }
 
-        // Extract rule key from the hidden lore carrier — the display name is now a
-        // translated string and can no longer be parsed back into a rule key.
-        String ruleName = null;
-        List<Component> lore = meta.lore();
-        if (lore != null) {
-            for (Component line : lore) {
-                String text = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
-                        .legacySection().serialize(line);
-                if (text.startsWith("§8RULE: ")) {
-                    ruleName = text.substring("§8RULE: ".length()).trim();
-                    break;
-                }
-            }
-        }
+        // Rule id read from invisible item NBT — the display name is now a translated
+        // string and can no longer be parsed back into a rule key.
+        String ruleName = meta.getPersistentDataContainer().get(ruleKey, PersistentDataType.STRING);
         if (ruleName == null || !plugin.getRuleManager().getAvailableRules().contains(ruleName)) return;
         if (!viewer.hasPermission("vanishpp.rules")
                 && (!viewer.equals(target) || !viewer.hasPermission("vanishpp.rules.others"))) return;
@@ -124,11 +118,11 @@ public class RulesGUI implements Listener {
             meta.displayName(plugin.getMessageManager().parse(getRuleDisplayName(rule), null)
                     .colorIfAbsent(enabled ? NamedTextColor.GREEN : NamedTextColor.RED)
                     .decoration(TextDecoration.ITALIC, false));
+            // Rule id stored in invisible item NBT — the display name is translated, so it
+            // can no longer be parsed back into a key, and a visible lore line would leak.
+            meta.getPersistentDataContainer().set(ruleKey, PersistentDataType.STRING, rule);
             String statusKey = enabled ? "gui.rules.status-enabled" : "gui.rules.status-disabled";
             meta.lore(List.of(
-                    // Hidden rule-key carrier read back by onClick() — the display name
-                    // itself is now translated, so it can no longer be parsed back to a key.
-                    Component.text("§8RULE: " + rule).decoration(TextDecoration.ITALIC, false),
                     plugin.getMessageManager().parse(plugin.getLanguageManager().getMessage(statusKey), null)
                             .decoration(TextDecoration.ITALIC, false),
                     plugin.getMessageManager().parse(plugin.getLanguageManager().getMessage("gui.rules.toggle-hint"), null)
