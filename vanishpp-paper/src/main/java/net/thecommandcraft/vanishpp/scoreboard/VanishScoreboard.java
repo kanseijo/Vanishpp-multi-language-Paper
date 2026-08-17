@@ -80,7 +80,7 @@ public class VanishScoreboard {
         ScoreboardManager sm = Bukkit.getScoreboardManager();
         Scoreboard sb = sm.getNewScoreboard();
 
-        // ★ 从语言文件读取标题 ★
+        // Read the title from the language file
         String title = plugin.getLanguageManager().getMessage("scoreboards.title");
         Objective obj = sb.registerNewObjective("vanishpp", Criteria.DUMMY, parse(title));
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
@@ -192,10 +192,10 @@ public class VanishScoreboard {
     }
 
     private void update(Player player, Scoreboard sb, Objective obj) {
-        // ★ 从语言文件读取标题和行内容 ★
+        // Read title and line content from the language file
         String title = plugin.getLanguageManager().getMessage("scoreboards.title");
         List<String> rawLines = plugin.getLanguageManager().getStringList("scoreboards.lines");
-        // 如果语言文件缺少 lines，回退到空列表（避免 NPE）
+        // Fall back to an empty list if the language file lacks the lines key (avoids NPE)
         if (rawLines == null) rawLines = Collections.emptyList();
 
         obj.displayName(parse(title));

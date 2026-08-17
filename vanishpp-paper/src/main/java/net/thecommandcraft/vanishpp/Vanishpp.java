@@ -121,7 +121,7 @@ public class Vanishpp extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        // 0. 解压语言文件（在加载配置之前确保外部语言文件存在）
+        // 0. Extract language files (ensure external language files exist before loading config)
         extractLanguageFiles();
 
         // 0b. Folia Detection
@@ -322,8 +322,9 @@ public class Vanishpp extends JavaPlugin implements Listener {
     }
 
     /**
-     * 将语言文件从 JAR 内复制到插件数据目录的 languages/ 文件夹。
-     * 如果文件已存在，则不会覆盖，以保留用户自定义修改。
+     * Copies language files from inside the JAR to the languages/ folder in the
+     * plugin data directory. Existing files are not overwritten, preserving any
+     * user customizations.
      */
     private void extractLanguageFiles() {
         File langDir = new File(getDataFolder(), "languages");
@@ -334,7 +335,8 @@ public class Vanishpp extends JavaPlugin implements Listener {
             }
         }
 
-        // GUI 文案已整合进 messages 文件；这里只提取 messages 与独立的 scoreboards。
+        // GUI text is integrated into the messages files; only extract messages
+        // and the separate scoreboards files.
         String[] langFiles = {
             "messages_en-us.yml", "messages_zh-cn.yml",
             "scoreboards_en-us.yml", "scoreboards_zh-cn.yml"
@@ -343,7 +345,7 @@ public class Vanishpp extends JavaPlugin implements Listener {
         for (String fileName : langFiles) {
             File target = new File(langDir, fileName);
             if (target.exists()) {
-                continue; // 不覆盖已有文件，保留用户自定义
+                continue; // do not overwrite existing files, preserving user customizations
             }
             try (InputStream in = getResource("languages/" + fileName)) {
                 if (in == null) {

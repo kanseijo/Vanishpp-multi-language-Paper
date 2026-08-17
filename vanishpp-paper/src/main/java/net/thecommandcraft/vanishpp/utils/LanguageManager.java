@@ -14,11 +14,14 @@ import java.util.Map;
 public class LanguageManager {
     private final Vanishpp plugin;
     private final Map<String, String> messages = new HashMap<>();
-    /** 每种语言文件的原始配置，用于 getStringList 跨文件查找列表键。 */
+    /** Raw config of each language file type, used by getStringList for cross-file list lookups. */
     private final Map<String, YamlConfiguration> typeConfigs = new HashMap<>();
     private String currentLang;
 
-    private static final String[] FILE_TYPES = {"gui", "messages", "scoreboards"};
+    // GUI text lives in the messages files; only messages and the separate scoreboards
+    // files are loaded. (The old gui_*.yml files were deleted when their keys were
+    // integrated into messages_*.yml.)
+    private static final String[] FILE_TYPES = {"messages", "scoreboards"};
 
     public LanguageManager(Vanishpp plugin) {
         this.plugin = plugin;
@@ -42,9 +45,12 @@ public class LanguageManager {
             }
             typeConfigs.put(type, config);
 
-            // 将配置键统一到 "type.扁平键" 命名空间，并剥离文件内多余的顶层包装（如 scoreboards 文件自带 "scoreboards:" 顶层）。
-            // 这样调用方无论使用扁平键（"config.reloaded"）还是带类型前缀的键（"messages.config.reloaded"、
-            // "scoreboards.title"、"gui.admin.title"）都能命中。列表键由 getStringList 处理，不进入字符串表。
+            // Normalize keys into the "type.flatKey" namespace and strip any redundant
+            // top-level wrapper the file itself carries (e.g. scoreboards files have
+            // their own "scoreboards:" root). Callers can then hit keys either as flat
+            // keys ("config.reloaded") or with a type prefix ("messages.config.reloaded",
+            // "scoreboards.title", "gui.admin.title"). List keys are handled by
+            // getStringList and never enter the string table.
             for (String key : config.getKeys(true)) {
                 if (config.isString(key)) {
                     String flatKey = stripTypeWrapper(key, type);
@@ -57,19 +63,21 @@ public class LanguageManager {
     }
 
     /**
-     * 加载某类型的一个语言文件（先按语言名，回退到 en-us）。返回 null 表示该类型无法加载。
-     * 兼容语言代码分隔符差异（如 "en-us" 与 "en_us"），保证文件名无论在插件数据文件夹还是 jar 内都能命中。
+     * Loads one language file for a type (tries the requested language first, falls back
+     * to en-us). Returns null if the type cannot be loaded. Tolerates both "-" and "_"
+     * separators in the language code so the file name resolves whether it lives in the
+     * plugin data folder or inside the jar.
      */
     private YamlConfiguration loadRaw(String type, String lang) {
         String fileName = type + "_" + lang + ".yml";
-        // 1. 插件数据文件夹（用户自定义优先）
+        // 1. Plugin data folder (user customizations take priority)
         for (String candidate : fileNameVariants(fileName)) {
             File langFile = new File(plugin.getDataFolder(), "languages/" + candidate);
             if (langFile.exists()) {
                 return YamlConfiguration.loadConfiguration(langFile);
             }
         }
-        // 2. jar 内 resources
+        // 2. Resources inside the jar
         for (String candidate : fileNameVariants(fileName)) {
             InputStream in = plugin.getResource("languages/" + candidate);
             if (in != null) {
@@ -79,7 +87,7 @@ public class LanguageManager {
         return null;
     }
 
-    /** 根据一个文件名生成带连字符与下划线两种分隔的候选名，兼容历史上 gui_en-us / gui_en_us 的命名差异。 */
+    /** Generates both "-" and "_" separated candidates for a file name, covering the historical gui_en-us / gui_en_us naming difference. */
     private String[] fileNameVariants(String fileName) {
         if (fileName.contains("_")) {
             return new String[]{fileName, fileName.replace("_", "-")};
@@ -87,7 +95,7 @@ public class LanguageManager {
         return new String[]{fileName};
     }
 
-    /** 将文件内原始键规范化：若键以 "type." 引导（文件顶层自带了与类型同名的包装），剥掉它。 */
+    /** Normalizes a raw key from a file: if it starts with "type." (the file wraps its keys under a same-named top level), strip that wrapper. */
     private String stripTypeWrapper(String key, String type) {
         String prefix = type + ".";
         if (key.startsWith(prefix)) {
@@ -98,10 +106,10 @@ public class LanguageManager {
 
     public String getMessage(String key) {
         String msg = messages.get(key);
-        // 统一解析到 messages 命名空间：
-        //  - 扁平键（"config.reloaded"、"console-specify"）→ "messages.config.reloaded"
-        //  - GUI 键（"gui.admin-dashboard.title"）→ "messages.gui.admin-dashboard.title"
-        //  - 已带前缀的键（"messages.x"、"scoreboards.x"）直接命中
+        // Resolve into the messages namespace:
+        //  - flat keys ("config.reloaded", "console-specify") → "messages.config.reloaded"
+        //  - GUI keys ("gui.admin-dashboard.title") → "messages.gui.admin-dashboard.title"
+        //  - already-prefixed keys ("messages.x", "scoreboards.x") hit directly
         if (msg == null && !key.startsWith("messages.") && !key.startsWith("scoreboards.")) {
             msg = messages.get("messages." + key);
         }
@@ -133,9 +141,9 @@ public class LanguageManager {
     }
 
     /**
-     * 获取字符串列表。列表键可能位于不同的类型文件中：messages 文件中的扁平列表键
-     * （如 "changelog.entries"）以及 scoreboards 文件中的列表键（如 "scoreboards.lines"）。
-     * 因此会依次在所有已加载的类型文件中查找。
+     * Gets a string list. List keys may live in different type files: flat list keys in the
+     * messages file (e.g. "changelog.entries") and list keys in the scoreboards file
+     * (e.g. "scoreboards.lines"). All loaded type files are searched in turn.
      */
     public List<String> getStringList(String key) {
         for (YamlConfiguration config : typeConfigs.values()) {
@@ -143,7 +151,7 @@ public class LanguageManager {
                 return config.getStringList(key);
             }
         }
-        // 兼容评分板文件带 "scoreboards:" 顶层包装的情况
+        // Handle scoreboards files wrapped under a "scoreboards:" top level
         if (!key.startsWith("scoreboards.")) {
             YamlConfiguration sb = typeConfigs.get("scoreboards");
             if (sb != null && sb.isList("scoreboards." + key)) {

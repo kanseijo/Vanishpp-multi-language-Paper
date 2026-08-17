@@ -160,7 +160,7 @@ public class ConfigManager {
     private void loadValues() {
         languageManager.load();
 
-        // 所有键都加上 messages. 前缀
+        // All keys are prefixed with messages.
         vanishMessage = languageManager.getMessage("messages.vanish.self");
         unvanishMessage = languageManager.getMessage("messages.vanish.unvanish-self");
         noPermissionMessage = languageManager.getMessage("messages.no-permission");
@@ -190,7 +190,7 @@ public class ConfigManager {
 
         staffNotifyEnabled = config.getBoolean("messages.staff-notify.enabled", true);
 
-        // Tab 前缀：管理员未自定义（等于内置默认）时使用语言文件的多语言值
+        // Tab prefix: use the language-file value when the admin left the built-in default
         vanishTabPrefix = config.getString("vanish-appearance.tab-prefix", "&7[VANISHED] ");
         if ("&7[VANISHED] ".equals(vanishTabPrefix)) {
             vanishTabPrefix = languageManager.getMessage("vanish-appearance.tab-prefix");
@@ -272,7 +272,7 @@ public class ConfigManager {
         webhookAuthHeader = config.getString("webhook.authorization", "");
 
         bossbarEnabled = config.getBoolean("bossbar.enabled", false);
-        // Boss 血条标题：管理员未自定义（等于内置默认）时使用语言文件的多语言值
+        // Bossbar title: use the language-file value when the admin left the built-in default
         bossbarTitle = config.getString("bossbar.title", "<gold>✦ You are <red>Vanished</red></gold>");
         if ("<gold>✦ You are <red>Vanished</red></gold>".equals(bossbarTitle) || "&7[Vanished]".equals(bossbarTitle)) {
             bossbarTitle = languageManager.getMessage("bossbar.title");
@@ -382,7 +382,7 @@ public class ConfigManager {
             defaultRules.putAll(s.defaultRules);
         }
 
-        // 重新加载语言字符串（所有键都使用 messages. 前缀）
+        // Reload language strings (all keys use the messages. prefix)
         languageManager.load();
         vanishMessage        = languageManager.getMessage("messages.vanish.self");
         unvanishMessage      = languageManager.getMessage("messages.vanish.unvanish-self");
