@@ -118,33 +118,10 @@ public class PlayerListener implements Listener {
                     staff.sendMessage(joinComp);
             }
             Bukkit.getConsoleSender().sendMessage(joinComp);
-        }
 
-        // Multi-stage reapply to catch TAB plugin overrides at different stages of its async pipeline.
-        // Registered unconditionally (not inside the vanished-if above) so it also covers the
-        // async fallback path where the DB vanish state wasn't known at join time and gets
-        // restored later via reconcileVanishState → resyncVanishEffects.
-        // Stage 1 (2 ticks / ~100ms): catches most cases instantly
-        // Stage 2 (20 ticks / 1s): catches delayed TAB processing
-        // Stage 3 (60 ticks / 3s): final safety net for heavily loaded servers
-        for (long delay : new long[]{2L, 20L, 60L}) {
-            plugin.getVanishScheduler().runLaterGlobal(() -> {
-                if (player.isOnline() && plugin.isVanished(player)) {
-                    plugin.reapplyTeamEntry(player);
-                    if (config.vanishTabPrefix != null && !config.vanishTabPrefix.isEmpty()) {
-                        player.playerListName(plugin.getMessageManager().parse(
-                                config.vanishTabPrefix + player.getName(), player));
-                    }
-                    plugin.getIntegrationManager().updateHooks(player, true);
-                    if (plugin.getTabPluginHook() != null)
-                        plugin.getTabPluginHook().update(player, true);
-                    // TAB (or any plugin) may have replaced the sidebar after our
-                    // join-time show() — reassert it, or open it if the restore path
-                    // (resyncVanishEffects) skipped it entirely.
-                    if (plugin.getVanishScoreboard() != null)
-                        plugin.getVanishScoreboard().reassert(player);
-                }
-            }, delay);
+            // Multi-stage reapply to catch TAB plugin overrides at different stages
+            // of its async pipeline (only for players already vanished at join).
+            scheduleVanishReapply(player);
         }
 
         for (UUID uuid : plugin.getRawVanishedPlayers()) {
@@ -165,6 +142,12 @@ public class PlayerListener implements Listener {
                 plugin.getVanishScheduler().runGlobal(() -> {
                     if (!player.isOnline()) return;
                     plugin.reconcileVanishState(player, dbVanished);
+                    // The join-time reapply stages were not registered above because the
+                    // vanish state wasn't known yet — register them now if the fallback
+                    // restored (or left) the player vanished.
+                    if (plugin.isVanished(player)) {
+                        scheduleVanishReapply(player);
+                    }
                 });
             });
         }
@@ -358,6 +341,40 @@ public class PlayerListener implements Listener {
                 plugin.sendDowngradeWarning(player);
             }
         }, 5L);
+    }
+
+    /**
+     * Schedules the multi-stage vanish reapply (team entry, tab prefix, integration
+     * hooks, scoreboard reassert) to catch TAB plugin overrides at different stages
+     * of its async pipeline.
+     * <ul>
+     *   <li>Stage 1 (2 ticks / ~100ms): catches most cases instantly</li>
+     *   <li>Stage 2 (20 ticks / 1s): catches delayed TAB processing</li>
+     *   <li>Stage 3 (60 ticks / 3s): final safety net for heavily loaded servers</li>
+     * </ul>
+     * Only called for players who are (or just became) vanished — non-vanished
+     * players never register these tasks.
+     */
+    private void scheduleVanishReapply(Player player) {
+        for (long delay : new long[]{2L, 20L, 60L}) {
+            plugin.getVanishScheduler().runLaterGlobal(() -> {
+                if (player.isOnline() && plugin.isVanished(player)) {
+                    plugin.reapplyTeamEntry(player);
+                    if (config.vanishTabPrefix != null && !config.vanishTabPrefix.isEmpty()) {
+                        player.playerListName(plugin.getMessageManager().parse(
+                                config.vanishTabPrefix + player.getName(), player));
+                    }
+                    plugin.getIntegrationManager().updateHooks(player, true);
+                    if (plugin.getTabPluginHook() != null)
+                        plugin.getTabPluginHook().update(player, true);
+                    // TAB (or any plugin) may have replaced the sidebar after our
+                    // join-time show() — reassert it, or open it if the restore path
+                    // (resyncVanishEffects) skipped it entirely.
+                    if (plugin.getVanishScoreboard() != null)
+                        plugin.getVanishScoreboard().reassert(player);
+                }
+            }, delay);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
