@@ -80,7 +80,8 @@ public class VanishScoreboard {
         ScoreboardManager sm = Bukkit.getScoreboardManager();
         Scoreboard sb = sm.getNewScoreboard();
 
-        String title = plugin.getScoreboardConfig().getString("title", "&8[ &7Vanish&f++ &8]");
+        // ★ 从语言文件读取标题 ★
+        String title = plugin.getLanguageManager().getMessage("scoreboards.title");
         Objective obj = sb.registerNewObjective("vanishpp", Criteria.DUMMY, parse(title));
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
 
@@ -175,10 +176,14 @@ public class VanishScoreboard {
     }
 
     private void update(Player player, Scoreboard sb, Objective obj) {
-        String title = plugin.getScoreboardConfig().getString("title", "&8[ &7Vanish&f++ &8]");
+        // ★ 从语言文件读取标题和行内容 ★
+        String title = plugin.getLanguageManager().getMessage("scoreboards.title");
+        List<String> rawLines = plugin.getLanguageManager().getStringList("scoreboards.lines");
+        // 如果语言文件缺少 lines，回退到空列表（避免 NPE）
+        if (rawLines == null) rawLines = Collections.emptyList();
+
         obj.displayName(parse(title));
 
-        List<String> rawLines = plugin.getScoreboardConfig().getStringList("lines");
         List<String> lines = padColumns(rawLines); // align | separators automatically
         int maxLines = Math.min(lines.size(), ENTRIES.length);
 

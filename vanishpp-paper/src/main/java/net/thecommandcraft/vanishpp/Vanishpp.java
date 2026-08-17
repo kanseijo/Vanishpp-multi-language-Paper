@@ -31,6 +31,10 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -117,7 +121,10 @@ public class Vanishpp extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        // 0. Folia Detection
+        // 0. 解压语言文件（在加载配置之前确保外部语言文件存在）
+        extractLanguageFiles();
+
+        // 0b. Folia Detection
         // Primary: server name — Paper 1.21+ added RegionScheduler to its API so class-presence
         // is no longer a reliable Folia indicator.
         boolean isFolia = "Folia".equalsIgnoreCase(Bukkit.getName());
@@ -138,7 +145,7 @@ public class Vanishpp extends JavaPlugin implements Listener {
             getLogger().info("Standard Bukkit/Paper environment detected. Using Legacy Scheduler.");
         }
 
-        // 0b. Platform & Version Compatibility Checks (console only)
+        // 0c. Platform & Version Compatibility Checks (console only)
         checkPlatformCompatibility(isFolia);
 
         // 1. Load Data/Config Managers
@@ -312,6 +319,43 @@ public class Vanishpp extends JavaPlugin implements Listener {
         }
 
         getLogger().info("Vanish++ " + getDescription().getVersion() + " enabled.");
+    }
+
+    /**
+     * 将语言文件从 JAR 内复制到插件数据目录的 languages/ 文件夹。
+     * 如果文件已存在，则不会覆盖，以保留用户自定义修改。
+     */
+    private void extractLanguageFiles() {
+        File langDir = new File(getDataFolder(), "languages");
+        if (!langDir.exists()) {
+            if (!langDir.mkdirs()) {
+                getLogger().warning("Failed to create languages directory.");
+                return;
+            }
+        }
+
+        String[] langFiles = {
+            "gui_en-us.yml", "gui_zh-cn.yml",
+            "messages_en-us.yml", "messages_zh-cn.yml",
+            "scoreboards_en-us.yml", "scoreboards_zh-cn.yml"
+        };
+
+        for (String fileName : langFiles) {
+            File target = new File(langDir, fileName);
+            if (target.exists()) {
+                continue; // 不覆盖已有文件，保留用户自定义
+            }
+            try (InputStream in = getResource("languages/" + fileName)) {
+                if (in == null) {
+                    getLogger().warning("Missing language file in JAR: " + fileName);
+                    continue;
+                }
+                Files.copy(in, target.toPath());
+                getLogger().info("Extracted language file: " + fileName);
+            } catch (IOException e) {
+                getLogger().warning("Failed to extract language file " + fileName + ": " + e.getMessage());
+            }
+        }
     }
 
     private void checkPlatformCompatibility(boolean isFolia) {

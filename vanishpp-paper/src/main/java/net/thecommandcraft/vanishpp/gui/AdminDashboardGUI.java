@@ -1,10 +1,10 @@
 package net.thecommandcraft.vanishpp.gui;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.thecommandcraft.vanishpp.Vanishpp;
+import net.thecommandcraft.vanishpp.utils.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -28,7 +28,6 @@ import java.util.concurrent.TimeUnit;
  */
 public class AdminDashboardGUI implements Listener {
 
-    private static final String TITLE = "§6Vanish++ Admin Dashboard";
     private static final int SIZE = 54;
 
     private final Vanishpp plugin;
@@ -40,7 +39,9 @@ public class AdminDashboardGUI implements Listener {
     }
 
     public void open(Player viewer) {
-        Inventory inv = Bukkit.createInventory(null, SIZE, Component.text(TITLE));
+        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
+        String title = lang.getMessage("gui.admin.title");
+        Inventory inv = Bukkit.createInventory(null, SIZE, plugin.getMessageManager().parse(title, null));
         populateInventory(inv);
 
         // Info panel in last row
@@ -55,7 +56,14 @@ public class AdminDashboardGUI implements Listener {
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player viewer)) return;
         if (!openViewers.contains(viewer.getUniqueId())) return;
-        if (!event.getView().title().toString().contains("Vanish++ Admin Dashboard")) return;
+
+        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
+        String title = lang.getMessage("gui.admin.title");
+        // 检查标题是否匹配（忽略颜色代码）
+        String viewTitle = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                .legacySection().serialize(event.getView().title());
+        if (!viewTitle.contains(title.replaceAll("§[0-9a-fk-or]", ""))) return;
+
         event.setCancelled(true);
 
         ItemStack clicked = event.getCurrentItem();
@@ -64,7 +72,7 @@ public class AdminDashboardGUI implements Listener {
         ItemMeta meta = clicked.getItemMeta();
         if (meta == null || !meta.hasDisplayName()) return;
 
-        // Extract player name from lore (first lore line contains UUID as hidden key)
+        // Extract UUID from lore
         String uuidStr = getLoreValue(meta, "§8UUID: ");
         if (uuidStr == null) return;
         UUID targetUuid;
@@ -112,6 +120,8 @@ public class AdminDashboardGUI implements Listener {
 
     @SuppressWarnings("deprecation")
     private ItemStack buildPlayerHead(Player p) {
+        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
+
         ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) skull.getItemMeta();
         if (meta == null) return skull;
@@ -121,32 +131,60 @@ public class AdminDashboardGUI implements Listener {
         long elapsedMs = System.currentTimeMillis()
                 - plugin.vanishStartTimes.getOrDefault(p.getUniqueId(), System.currentTimeMillis());
         long secs = elapsedMs / 1000;
-        String elapsed = (secs / 60) + "m " + (secs % 60) + "s";
+        // 构建时间字符串（使用语言文件中的 "分" 和 "秒"）
+        String minuteStr = lang.getMessage("time.minute");
+        String secondStr = lang.getMessage("time.second");
+        String elapsed = (secs / 60) + minuteStr + " " + (secs % 60) + secondStr;
         int level = plugin.getStorageProvider().getVanishLevel(p.getUniqueId());
 
+        // 玩家名字（显示名）
         meta.displayName(Component.text(p.getName(), NamedTextColor.GOLD)
                 .decoration(TextDecoration.ITALIC, false));
 
         List<Component> lore = new ArrayList<>();
+
+        // UUID 行保留不变（用于内部解析）
         lore.add(Component.text("§8UUID: " + p.getUniqueId()).decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Level: " + level, NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Elapsed: " + elapsed, NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-        if (reason != null && !reason.isBlank())
-            lore.add(Component.text("Reason: " + reason, NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false));
+
+        // 等级
+        String levelMsg = lang.getMessage("gui.admin.level", "level", String.valueOf(level));
+        lore.add(plugin.getMessageManager().parse(levelMsg, null).decoration(TextDecoration.ITALIC, false));
+
+        // 已持续
+        String elapsedMsg = lang.getMessage("gui.admin.elapsed", "time", elapsed);
+        lore.add(plugin.getMessageManager().parse(elapsedMsg, null).decoration(TextDecoration.ITALIC, false));
+
+        // 原因
+        if (reason != null && !reason.isBlank()) {
+            String reasonMsg = lang.getMessage("gui.admin.reason", "reason", reason);
+            lore.add(plugin.getMessageManager().parse(reasonMsg, null).decoration(TextDecoration.ITALIC, false));
+        }
+
         lore.add(Component.empty());
-        lore.add(Component.text("Left-click → Rules GUI", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Right-click → Unvanish", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
+
+        // 左键提示
+        String leftClickMsg = lang.getMessage("gui.admin.left_click");
+        lore.add(plugin.getMessageManager().parse(leftClickMsg, null).decoration(TextDecoration.ITALIC, false));
+
+        // 右键提示
+        String rightClickMsg = lang.getMessage("gui.admin.right_click");
+        lore.add(plugin.getMessageManager().parse(rightClickMsg, null).decoration(TextDecoration.ITALIC, false));
+
         meta.lore(lore);
         skull.setItemMeta(meta);
         return skull;
     }
 
     private ItemStack buildInfoItem() {
+        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
+        int count = plugin.getRawVanishedPlayers().size();
+        String msg = lang.getMessage("gui.admin.vanished_count", "count", String.valueOf(count));
+
         ItemStack item = new ItemStack(Material.PAPER);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            int count = plugin.getRawVanishedPlayers().size();
-            meta.displayName(Component.text("Vanished: " + count, NamedTextColor.YELLOW)
+            meta.displayName(plugin.getMessageManager().parse(msg, null)
+                    .colorIfAbsent(NamedTextColor.YELLOW)
                     .decoration(TextDecoration.ITALIC, false));
             item.setItemMeta(meta);
         }
@@ -154,10 +192,14 @@ public class AdminDashboardGUI implements Listener {
     }
 
     private ItemStack buildCloseItem() {
+        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
+        String msg = lang.getMessage("gui.admin.close_button");
+
         ItemStack item = new ItemStack(Material.BARRIER);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(Component.text("Close", NamedTextColor.RED)
+            meta.displayName(plugin.getMessageManager().parse(msg, null)
+                    .colorIfAbsent(NamedTextColor.RED)
                     .decoration(TextDecoration.ITALIC, false));
             item.setItemMeta(meta);
         }

@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.thecommandcraft.vanishpp.Vanishpp;
+import net.thecommandcraft.vanishpp.utils.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -34,7 +35,7 @@ public class ConfigGUI implements Listener {
 
     public ConfigGUI(Vanishpp plugin) {
         this.plugin = plugin;
-        this.renderer = new ConfigRenderer();
+        this.renderer = new ConfigRenderer(plugin);
         this.playerCategory = new ConcurrentHashMap<>();
         this.playerPage = new ConcurrentHashMap<>();
         this.slotToKeyMapping = new ConcurrentHashMap<>();
@@ -48,7 +49,9 @@ public class ConfigGUI implements Listener {
      */
     public void open(Player player) {
         if (!player.hasPermission("vanishpp.config")) {
-            player.sendMessage(Component.text("You don't have permission to use this command.", NamedTextColor.RED));
+            LanguageManager lang = plugin.getLanguageManager();
+            String msg = lang.getMessage("gui.config.no_permission");
+            player.sendMessage(plugin.getMessageManager().parse(msg, player));
             return;
         }
 
@@ -87,7 +90,7 @@ public class ConfigGUI implements Listener {
         if (!openViewers.contains(uuid)) return;
         String title = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
                 .legacySection().serialize(event.getView().title()).toLowerCase();
-        if (!title.contains("config")) return;  // Case-insensitive check
+        if (!title.contains("config")) return;  // Case-insensitive check (internal logic, no translation needed)
 
         // Re-check permission in case player lost it while GUI was open
         if (!player.hasPermission("vanishpp.config")) {
@@ -248,11 +251,10 @@ public class ConfigGUI implements Listener {
      * Send action bar confirmation message for saved value.
      */
     private void sendSaveMessage(Player player, String key, String value) {
-        Component message = Component.text("✓ ", NamedTextColor.GREEN)
-                .append(Component.text(key, NamedTextColor.AQUA))
-                .append(Component.text(" → ", NamedTextColor.GRAY))
-                .append(Component.text(value, NamedTextColor.GREEN))
-                .decoration(TextDecoration.ITALIC, false);
+        LanguageManager lang = plugin.getLanguageManager();
+        String template = lang.getMessage("gui.config.saved");
+        template = template.replace("%key%", key).replace("%value%", value);
+        Component message = plugin.getMessageManager().parse(template, player);
         player.sendActionBar(message);
     }
 

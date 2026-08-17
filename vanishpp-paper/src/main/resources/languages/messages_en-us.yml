@@ -30,7 +30,7 @@ vperms:
 update:
   available: "&a&lVanish++ Update Available!"
   current: "&7Current: &c%version%"
-  latest: "&7Latest: &a%version% &8[&e%type%&8]"
+  latest: "&7Latest: &a%version%"
   download: "&6&l[CLICK TO DOWNLOAD]"
   hover: "&eGo to Modrinth Version %version%"
   hide-beta: "&8[&7Don't notify me about beta builds&8]"
@@ -38,26 +38,13 @@ update:
   hide-alpha: "&8[&7Don't notify me about alpha builds&8]"
   hide-alpha-hover: "&7Click to stop receiving alpha update notifications.\n&8Runs: /vconfig update-checker.show-alpha false"
 
-# --- [ RULES COMMAND ] ---
-rules:
-  usage: "&cUsage: /vrules [player] <rule> [true|false] [seconds] &7— omit seconds for permanent"
-  invalid-name: "&cInvalid rule name. Use /vrules to see available rules."
-  invalid-value: "&cValue must be 'true' or 'false'."
-  invalid-seconds: "&cInvalid number of seconds."
-  header: "&6Rules for %player%:"
-  line: " • %rule%: <%color%>%status%"
-  status-on: "ENABLED"
-  status-off: "DISABLED"
-  set: "&aRule '%rule%' for %player% set to %status%."
-  set-temp: "&aRule '%rule%' for %player% set to %status% for %seconds%s."
-  expired: "&eTemporary rule '%rule%' has expired."
-
 # --- [ CHAT ] ---
 chat:
   locked: "<red>You are vanished! <gray>Click <click:run_command:'/vchat confirm'><aqua><underlined>[Confirm Send]</underlined></aqua></click> <gray>to send this message."
   sent: "&aMessage sent."
   no-pending: "&cYou have no pending chat messages to confirm."
   usage: "&7Usage: &b/vchat confirm &7— send your pending vanish chat message."
+  players-only: "&cOnly players can use this command."
 
 # --- [ PICKUP ] ---
 pickup:
@@ -111,6 +98,8 @@ config:
   proxy-mismatch-line2: "The following settings are out of sync:"
   proxy-mismatch-line3: "Apply them to the proxy or dismiss this warning."
   proxy-applied: "&aApplied %count% config setting(s) to the proxy."
+  gui-only-players: "&cOnly players can use the config GUI."
+  proxy-synced: "&aConfig change synced to proxy."
 
 # --- [ PLUGIN LIST ] ---
 plugins:
@@ -275,6 +264,7 @@ bulk:
 # --- [ CHANGELOG ] ---
 changelog:
   header: "\n&6&l  Vanish++ 1.1.8 Changelog  "
+  no-entries: "&7No changelog entries found."
   entries:
     - " &8• &eNew&7: /vspec quick-spectate command"
     - " &8• &eNew&7: /vfollow player tracking with HUD"
@@ -303,3 +293,36 @@ changelog:
     - " &8• &cFixed&7: Folia scheduler illegal delay crash (reported in #11)"
     - " &8• &cFixed&7: Mass disconnect on unvanish (glow packet race + packet burst)"
   footer: "&7-------------------------------"
+
+# --- [ DOWNGRADE ] ---
+# Used by /vdowngrade command (SQL storage only)
+downgrade:
+  no-permission: "&cNo permission."
+  not-active: "&aNo downgrade situation is currently active."
+  sql-required: "&cThis command requires SQL storage."
+  usage: "&eUsage: /vdowngrade <info|allow|reset [confirm]>"
+  info-border: "&6┌─────────────────────────────────────────────┐"
+  info-title: "&6&l│  VANISH++ DOWNGRADE — DATA AT STAKE          │"
+  info-db-version: "&6│  DB version: &c%version%"
+  info-running: "&6│  Running:    &e%version%"
+  info-stats-line: "&7│  %stat%: &f%count%"
+  info-reset-warning: "&c│  Resetting will delete ALL of the above.     │"
+  info-suspended: "&7│  All DB writes are currently SUSPENDED.      │"
+  button-allow: "&e&l[ Allow writes (risky) ]"
+  button-reset: "&c&l[ Reset DB (fresh start) ]"
+  hover-allow: "&cLets the older plugin write to the DB.\nData may be corrupted."
+  hover-reset: "&6Wipes all Vanish++ data from the DB\nand starts fresh."
+  allow-success: "&eDB writes resumed. The plugin is now running on a DB from a newer version. Proceed with caution."
+  reset-confirm-warning: "&c&l⚠ This will permanently delete all data shown above."
+  reset-confirm-button: "&c&l[ WIPE DATABASE AND START FRESH ]"
+  hover-reset-confirm: "&cThis cannot be undone!"
+  reset-start: "&eWiping all Vanish++ data from the database..."
+  reset-complete: "&aDatabase reset complete. All writes are now active."
+
+# --- [ SCOREBOARD COMMAND ] ---
+scoreboard:
+  command:
+    only-players: "&cThis command can only be used by players."
+    disabled: "&cThe vanish scoreboard is disabled in config.yml."
+    enabled: "&aVanish scoreboard enabled."
+    disabled: "&cVanish scoreboard disabled."

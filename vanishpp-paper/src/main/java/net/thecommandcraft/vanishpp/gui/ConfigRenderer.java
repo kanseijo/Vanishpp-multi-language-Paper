@@ -3,6 +3,8 @@ package net.thecommandcraft.vanishpp.gui;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.thecommandcraft.vanishpp.Vanishpp;
+import net.thecommandcraft.vanishpp.utils.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.inventory.Inventory;
@@ -34,6 +36,14 @@ public class ConfigRenderer {
     private static final Material NUMERIC = Material.ORANGE_CONCRETE;
     private static final Material NAVIGATION = Material.GRAY_STAINED_GLASS;
 
+    private final Vanishpp plugin;
+    private final LanguageManager lang;
+
+    public ConfigRenderer(Vanishpp plugin) {
+        this.plugin = plugin;
+        this.lang = plugin.getLanguageManager();
+    }
+
     /**
      * Build the inventory for a specific category and page, returning both inventory and slot mapping.
      *
@@ -42,8 +52,8 @@ public class ConfigRenderer {
      * @return Object array: [Inventory, Map<Integer slot, String key>]
      */
     public Object[] buildCategoryInventory(String category, int page) {
-        String title = "§6Vanish++ Config — " + category;
-        Inventory inv = Bukkit.createInventory(null, INVENTORY_SIZE, Component.text(title));
+        String title = lang.getMessage("gui.config.title", "category", getCategoryDisplayName(category));
+        Inventory inv = Bukkit.createInventory(null, INVENTORY_SIZE, plugin.getMessageManager().parse(title, null));
         Map<Integer, String> slotToKey = new HashMap<>();
 
         // Row 0: Category tabs
@@ -68,7 +78,8 @@ public class ConfigRenderer {
         for (ConfigCategory category : ConfigCategory.values()) {
             if (slot >= 9) break;  // Only 9 slots in row 0
             boolean isActive = category.name().equals(activeCategory);
-            ItemStack tab = createCategoryTab(category.getDisplayName(), isActive);
+            String displayName = getCategoryDisplayName(category.name());
+            ItemStack tab = createCategoryTab(displayName, isActive);
             inv.setItem(slot++, tab);
         }
     }
@@ -80,9 +91,13 @@ public class ConfigRenderer {
         ItemStack item = new ItemStack(isActive ? CATEGORY_ACTIVE : CATEGORY_INACTIVE);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(Component.text(categoryName,
-                    isActive ? NamedTextColor.YELLOW : NamedTextColor.BLUE)
-                    .decoration(TextDecoration.ITALIC, false));
+            Component parsed = plugin.getMessageManager().parse(categoryName, null);
+            if (isActive) {
+                parsed = parsed.colorIfAbsent(NamedTextColor.YELLOW);
+            } else {
+                parsed = parsed.colorIfAbsent(NamedTextColor.BLUE);
+            }
+            meta.displayName(parsed.decoration(TextDecoration.ITALIC, false));
             item.setItemMeta(meta);
         }
         return item;
@@ -151,6 +166,7 @@ public class ConfigRenderer {
 
             // Lore with instructions
             List<Component> lore = new ArrayList<>();
+            // Description (still from enum, but we can later externalize)
             lore.add(Component.text(value.description, NamedTextColor.GRAY)
                     .decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());
@@ -158,26 +174,28 @@ public class ConfigRenderer {
             if (value.type.isBoolean()) {
                 Object val = value.defaultValue;
                 String status = (val instanceof Boolean && (Boolean) val) ? "§aTRUE" : "§cFALSE";
-                lore.add(Component.text("Current: " + status, NamedTextColor.WHITE)
-                        .decoration(TextDecoration.ITALIC, false));
-                lore.add(Component.text("Click to toggle", NamedTextColor.YELLOW)
-                        .decoration(TextDecoration.ITALIC, false));
+                String currentMsg = lang.getMessage("gui.config.setting.current", "value", status);
+                lore.add(plugin.getMessageManager().parse(currentMsg, null));
+                String toggleMsg = lang.getMessage("gui.config.setting.click_toggle");
+                lore.add(plugin.getMessageManager().parse(toggleMsg, null));
             } else if (value.type.isNumeric()) {
                 Object val = value.defaultValue;
                 String current = val != null ? String.valueOf(val) : "?";
-                lore.add(Component.text("Current: " + current, NamedTextColor.WHITE)
-                        .decoration(TextDecoration.ITALIC, false));
+                String currentMsg = lang.getMessage("gui.config.setting.current", "value", current);
+                lore.add(plugin.getMessageManager().parse(currentMsg, null));
                 lore.add(Component.empty());
-                lore.add(Component.text("§7Left: -1  |  Right: +1", NamedTextColor.YELLOW)
-                        .decoration(TextDecoration.ITALIC, false));
-                lore.add(Component.text("§7Shift: ±10", NamedTextColor.YELLOW)
-                        .decoration(TextDecoration.ITALIC, false));
+                String adjustMsg = lang.getMessage("gui.config.setting.adjust");
+                lore.add(plugin.getMessageManager().parse(adjustMsg, null));
+                String shiftMsg = lang.getMessage("gui.config.setting.shift_adjust");
+                lore.add(plugin.getMessageManager().parse(shiftMsg, null));
                 lore.add(Component.empty());
-                lore.add(Component.text("Range: " + value.minBound + " → " + value.maxBound,
-                        NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
+                String rangeMsg = lang.getMessage("gui.config.setting.range",
+                        "min", String.valueOf(value.minBound),
+                        "max", String.valueOf(value.maxBound));
+                lore.add(plugin.getMessageManager().parse(rangeMsg, null));
             } else {
-                lore.add(Component.text("Display only", NamedTextColor.GRAY)
-                        .decoration(TextDecoration.ITALIC, false));
+                String displayOnlyMsg = lang.getMessage("gui.config.setting.display_only");
+                lore.add(plugin.getMessageManager().parse(displayOnlyMsg, null));
             }
 
             meta.lore(lore);
@@ -195,16 +213,20 @@ public class ConfigRenderer {
 
         // Previous button (slot 45)
         if (currentPage > 0) {
-            ItemStack prev = createNavigationButton("§6◀ PREVIOUS", NAVIGATION);
+            String label = lang.getMessage("gui.config.navigation.prev");
+            ItemStack prev = createNavigationButton(label, NAVIGATION);
             inv.setItem(45, prev);
         }
 
         // Info button (slot 49)
-        String info = "Page " + (currentPage + 1) + " / " + totalPages;
-        ItemStack infoItem = createNavigationButton("§eINFO", NAVIGATION);
+        String info = lang.getMessage("gui.config.navigation.info",
+                "page", String.valueOf(currentPage + 1),
+                "total", String.valueOf(totalPages));
+        ItemStack infoItem = createNavigationButton(info, NAVIGATION);
         ItemMeta infoMeta = infoItem.getItemMeta();
         if (infoMeta != null) {
-            infoMeta.displayName(Component.text(info, NamedTextColor.YELLOW)
+            infoMeta.displayName(plugin.getMessageManager().parse(info, null)
+                    .colorIfAbsent(NamedTextColor.YELLOW)
                     .decoration(TextDecoration.ITALIC, false));
             infoItem.setItemMeta(infoMeta);
         }
@@ -212,7 +234,8 @@ public class ConfigRenderer {
 
         // Next button (slot 53)
         if (currentPage < totalPages - 1) {
-            ItemStack next = createNavigationButton("§6NEXT ▶", NAVIGATION);
+            String label = lang.getMessage("gui.config.navigation.next");
+            ItemStack next = createNavigationButton(label, NAVIGATION);
             inv.setItem(53, next);
         }
     }
@@ -224,7 +247,7 @@ public class ConfigRenderer {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(Component.text(label)
+            meta.displayName(plugin.getMessageManager().parse(label, null)
                     .decoration(TextDecoration.ITALIC, false));
             item.setItemMeta(meta);
         }
@@ -278,5 +301,10 @@ public class ConfigRenderer {
         ConfigCategory cat = ConfigCategory.valueOf(categoryName);
         int totalSettings = cat.getSettingCount();
         return Math.max(1, (totalSettings + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE);
+    }
+
+    // Helper: get display name from language file
+    private String getCategoryDisplayName(String categoryName) {
+        return lang.getMessage("gui.config.category." + categoryName);
     }
 }
