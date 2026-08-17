@@ -481,10 +481,9 @@ public class Vanishpp extends JavaPlugin implements Listener {
             }
         }
 
-        // Language may have changed on reload — refresh live bossbars and re-render
-        // scoreboards so already-vanished players see the new text immediately.
+        // Language may have changed on reload — rebuild live bossbars so
+        // already-vanished players see the new title without re-vanishing.
         if (vanishBossbar != null) vanishBossbar.refreshAll();
-        if (vanishScoreboard != null) vanishScoreboard.refreshAll();
     }
 
     @Override
@@ -1567,19 +1566,6 @@ public class Vanishpp extends JavaPlugin implements Listener {
 
         // Visibility + glow
         refreshVisibilityWithGlow(player);
-
-        // Bossbar + scoreboard — the join-restore path must show them too. This is the
-        // fix for "logged off while vanished → rejoin → board/bossbar missing": the
-        // restore path used to stop here, so a player whose DB state already matched
-        // (resync branch) rejoined with neither the sidebar nor the bossbar.
-        if (vanishBossbar != null) vanishBossbar.show(player);
-        if (vanishScoreboard != null) {
-            try {
-                vanishScoreboard.onVanish(player);
-            } catch (Exception e) {
-                getLogger().fine("Scoreboard update failed (may be test environment): " + e.getClass().getSimpleName());
-            }
-        }
     }
 
     public void scheduleRuleRevert(Player player, String rule, boolean originalValue, int seconds) {
