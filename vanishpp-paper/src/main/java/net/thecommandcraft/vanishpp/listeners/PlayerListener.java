@@ -134,6 +134,11 @@ public class PlayerListener implements Listener {
                         plugin.getIntegrationManager().updateHooks(player, true);
                         if (plugin.getTabPluginHook() != null)
                             plugin.getTabPluginHook().update(player, true);
+                        // TAB (or any plugin) may have replaced the sidebar after our
+                        // join-time show() — reassert it, or open it if the restore path
+                        // (resyncVanishEffects) skipped it entirely.
+                        if (plugin.getVanishScoreboard() != null)
+                            plugin.getVanishScoreboard().reassert(player);
                     }
                 }, delay);
             }

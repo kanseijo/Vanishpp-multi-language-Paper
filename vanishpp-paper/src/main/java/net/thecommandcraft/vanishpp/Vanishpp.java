@@ -480,6 +480,11 @@ public class Vanishpp extends JavaPlugin implements Listener {
                 resyncVanishEffects(p);
             }
         }
+
+        // Language may have changed on reload — refresh live bossbars and re-render
+        // scoreboards so already-vanished players see the new text immediately.
+        if (vanishBossbar != null) vanishBossbar.refreshAll();
+        if (vanishScoreboard != null) vanishScoreboard.refreshAll();
     }
 
     @Override

@@ -110,6 +110,40 @@ public class VanishScoreboard {
         movementCooldowns.remove(uuid);
     }
 
+    /**
+     * Reassert this player's board after a join: re-apply if another plugin (e.g. TAB)
+     * overwrote the sidebar, or show it if the vanish-restore path skipped it.
+     * Safe to call repeatedly — it only acts when the board is missing or was replaced.
+     */
+    public void reassert(Player player) {
+        if (!plugin.getConfigManager().scoreboardEnabled) return;
+        if (manuallyHidden.contains(player.getUniqueId())) return;
+        if (!player.hasPermission("vanishpp.scoreboard")) return;
+        if (player.hasPermission("vanishpp.scoreboard.bypass")) return;
+
+        Scoreboard sb = boards.get(player.getUniqueId());
+        if (sb == null) {
+            // Should be showing (player is vanished) but isn't — e.g. the join-restore
+            // path (resyncVanishEffects) doesn't open the board.
+            onVanish(player);
+            return;
+        }
+        if (player.getScoreboard() != sb) {
+            // Another plugin replaced the player's scoreboard after our show().
+            player.setScoreboard(sb);
+        }
+    }
+
+    /**
+     * Re-render every live board from the current language file (language reload).
+     */
+    public void refreshAll() {
+        for (UUID uuid : new ArrayList<>(boards.keySet())) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p != null && p.isOnline()) tick(p);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Task management (called from Vanishpp.reloadPluginConfig / onEnable)
     // -------------------------------------------------------------------------
