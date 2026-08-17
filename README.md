@@ -4,6 +4,8 @@
 
 **The absolute standard for modern admin stealth on Paper/Folia servers.**
 
+[**English**](README.md) | [**中文**](README_zh-CN.md)
+
 [![Modrinth](https://img.shields.io/modrinth/v/kbKpK1bc?label=Modrinth&logo=modrinth)](https://modrinth.com/plugin/vanish++)
 [![Modrinth Downloads](https://img.shields.io/modrinth/dt/kbKpK1bc?logo=modrinth)](https://modrinth.com/plugin/vanish++)
 [![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://adoptium.net/)
@@ -11,6 +13,14 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 </div>
+
+> ### ⚠️ Fork Status — Read This First
+>
+> This repository is a **multi-language fork** of Vanish++. It currently maintains **only the `vanishpp-paper` module**:
+>
+> - The `vanishpp-velocity` module and the root `src/` tree are preserved as-is but are **not maintained or modified** by this fork.
+> - All changes — multi-language support (`languages/messages_*.yml`), GUI fixes, silent-chest fixes, and more — are scoped to `vanishpp-paper`.
+> - **Tested on Purpur 1.21.11 build 2558 only.** Other Paper-family versions should work but have **not been verified** by this fork.
 
 ---
 
@@ -159,6 +169,8 @@ Hooks directly into the server protocol to scrub your existence from clients. *(
 | **Bukkit** | Compatible | Same limitations as Spigot |
 
 **Supported versions:** Minecraft 1.20.6 — 26.2
+
+> **⚠️ Tested platform (this fork):** **Purpur 1.21.11 build 2558** — the `vanishpp-paper` module was built and tested on this exact server build only. Compatibility with other Paper-family versions is expected but not verified by this fork.
 
 **Optional integrations:** TAB (NEZNAMY), PlaceholderAPI, Dynmap, EssentialsX, DiscordSRV, Simple Voice Chat
 
