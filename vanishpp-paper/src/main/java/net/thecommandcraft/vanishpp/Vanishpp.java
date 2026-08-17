@@ -334,8 +334,8 @@ public class Vanishpp extends JavaPlugin implements Listener {
             }
         }
 
+        // GUI 文案已整合进 messages 文件；这里只提取 messages 与独立的 scoreboards。
         String[] langFiles = {
-            "gui_en-us.yml", "gui_zh-cn.yml",
             "messages_en-us.yml", "messages_zh-cn.yml",
             "scoreboards_en-us.yml", "scoreboards_zh-cn.yml"
         };
@@ -402,20 +402,39 @@ public class Vanishpp extends JavaPlugin implements Listener {
         if (parts.length < 2) {
             return false;
         }
+        int major;
+        int minor;
         try {
-            int major = Integer.parseInt(parts[0]);
-            int minor = Integer.parseInt(parts[1]);
-            int patch = parts.length >= 3 ? Integer.parseInt(parts[2]) : 0;
-            if (major == 26) {
-                return true;
-            }
-            if (major == 1 && minor == 21) {
-                return true;
-            }
-            return major == 1 && minor == 20 && patch >= 6;
+            major = Integer.parseInt(parts[0]);
+            minor = Integer.parseInt(parts[1]);
         } catch (NumberFormatException e) {
             return false;
         }
+        if (major == 26) {
+            return true;
+        }
+        if (major == 1 && minor == 21) {
+            return true;
+        }
+        if (major == 1 && minor == 20) {
+            // Only this branch actually needs the patch component, and only here do we
+            // parse it — Bukkit.getBukkitVersion() sometimes reports a non-numeric third
+            // segment (e.g. Paper 26.2 reports "26.2.build.112", with no patch number at
+            // all since 26.2 has no patch release). Parsing patch unconditionally for
+            // every version, as this used to do, threw NumberFormatException on "build"
+            // and fell through to "unsupported" even for a major==26 build that didn't
+            // need patch at all. Now patch is only parsed when the 1.20.x branch needs it.
+            if (parts.length < 3) {
+                return false;
+            }
+            try {
+                int patch = Integer.parseInt(parts[2]);
+                return patch >= 6;
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
+        return false;
     }
 
     public void reloadPluginConfig() {

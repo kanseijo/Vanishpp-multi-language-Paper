@@ -249,15 +249,17 @@ help:
 
 # --- [ 规则预设 ] ---
 rules:
-  preset:
-    usage: '&c用法：/vrules preset <save|load|list|delete> [名称]'
-    saved: '&a已保存规则预设 &e%name%&a。'
-    loaded: '&a已加载规则预设 &e%name%&a。'
-    deleted: '&a已删除规则预设 &e%name%&a。'
-    not-found: '&c未找到名为 &e%name% &c的预设。'
-    none: '&7你没有已保存的规则预设。'
-    list-header: '&6你的规则预设：'
-    list-entry: ' &8• &e%name%'
+  usage: '&c用法：/vrules [玩家] <规则> [true|false] [秒数] &7— 省略秒数为永久'
+  invalid-name: '&c无效的规则名。使用 /vrules 查看可用规则。'
+  invalid-value: '&c值必须是 ''true'' 或 ''false''。'
+  invalid-seconds: '&c无效的秒数。'
+  header: '&6%player% 的规则：'
+  line: ' • %rule%: <%color%>%status%'
+  status-on: '已启用'
+  status-off: '已禁用'
+  set: '&a已将 %player% 的规则 ''%rule%'' 设为 %status%。'
+  set-temp: '&a已将 %player% 的规则 ''%rule%'' 设为 %status%（%seconds% 秒）。'
+  expired: '&e临时规则 ''%rule%'' 已到期。'
 
 # --- [ 批量隐身 ] ---
 bulk:
@@ -295,3 +297,72 @@ changelog:
   - ' &8• &c修复&7：Folia 调度器非法延迟崩溃（#11 报告）'
   - ' &8• &c修复&7：取消隐身时的大规模断连（发光数据包竞赛与突发）'
   footer: '&7-------------------------------'
+
+# --- [ 规则预设 ] ---
+rules-preset:
+  usage: '&c用法：/vrules preset <save|load|list|delete> [名称]'
+  saved: '&a已保存规则预设 &e%name%&a。'
+  loaded: '&a已加载规则预设 &e%name%&a。'
+  deleted: '&a已删除规则预设 &e%name%&a。'
+  not-found: '&c未找到名为 &e%name% &c的预设。'
+  none: '&7你没有已保存的规则预设。'
+  list-header: '&6你的规则预设：'
+  list-entry: ' &8• &e%name%'
+
+# --- [ GUI 文案 ] ---
+# GUI 文案与聊天/命令消息共用此文件，实时读取。
+gui:
+  rules:
+    title-prefix: '&6规则：&f'
+    status-enabled: '&a✔ 已启用'
+    status-disabled: '&c✘ 已禁用'
+    toggle-hint: '&7点击切换'
+  admin-dashboard:
+    title: '&6Vanish++ 管理员控制台'
+    level: '&b等级：&f%level%'
+    elapsed: '&e已持续：&f%elapsed%'
+    reason: '&f原因：&f%reason%'
+    hint-rules: '&7左键点击 → &e规则 GUI'
+    hint-unvanish: '&c右键点击 → &c取消隐身'
+    vanished-count: '&e隐身中：&f%count%'
+    close: '&c关闭'
+  config:
+    title-prefix: '&6Vanish++ 配置 — &f'
+    no-permission: '&c你没有权限使用此命令。'
+    nav:
+      previous: '&6◀ 上一页'
+      next: '&6下一页 ▶'
+      page-info: '&e第 %page% / %total% 页'
+    setting:
+      current-prefix: '&f当前：&f'
+      value-true: '&a开启'
+      value-false: '&c关闭'
+      click-to-toggle: '&e点击切换'
+      numeric-controls: '&7左键：-1  |  右键：+1'
+      numeric-controls-shift: '&7Shift：±10'
+      range: '&6范围：%min% → %max%'
+      display-only: '&7仅显示'
+      saved: '&a✓ &b%key% &7→ &a%value%'
+    category:
+      general: '常规设置'
+      visibility: '可见性与渲染'
+      spectator: '旁观模式'
+      storage: '数据库与存储'
+      permissions: '权限系统'
+      features: '功能与行为'
+    setting-description:
+      vanish-appearance:
+        action-bar:
+          enabled: '隐身时持续显示状态动作栏消息'
+      vanish-gamemodes:
+        enabled: '双击潜行快速切换旁观的总开关'
+        default-spectator: '隐身时自动进入旁观模式'
+      permissions:
+        default-vanish-level: '玩家默认获得的隐身等级'
+        default-see-level: '玩家默认能看到的最低隐身等级'
+        max-level: '权限系统允许的最高隐身/可见等级'
+      flight-control:
+        vanish-enable-fly: '给予隐身玩家飞行能力'
+        unvanish-disable-fly: '取消隐身时禁用飞行'
+      invisibility-features:
+        prevent-sleeping: '隐身时禁止睡觉'

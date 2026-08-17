@@ -1,10 +1,7 @@
 package net.thecommandcraft.vanishpp.gui;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.thecommandcraft.vanishpp.Vanishpp;
-import net.thecommandcraft.vanishpp.utils.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -49,9 +46,8 @@ public class ConfigGUI implements Listener {
      */
     public void open(Player player) {
         if (!player.hasPermission("vanishpp.config")) {
-            LanguageManager lang = plugin.getLanguageManager();
-            String msg = lang.getMessage("gui.config.no_permission");
-            player.sendMessage(plugin.getMessageManager().parse(msg, player));
+            plugin.getMessageManager().sendMessage(player,
+                    plugin.getLanguageManager().getMessage("gui.config.no-permission"));
             return;
         }
 
@@ -90,7 +86,7 @@ public class ConfigGUI implements Listener {
         if (!openViewers.contains(uuid)) return;
         String title = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
                 .legacySection().serialize(event.getView().title()).toLowerCase();
-        if (!title.contains("config")) return;  // Case-insensitive check (internal logic, no translation needed)
+        if (!title.contains("config")) return;  // Case-insensitive check
 
         // Re-check permission in case player lost it while GUI was open
         if (!player.hasPermission("vanishpp.config")) {
@@ -251,11 +247,9 @@ public class ConfigGUI implements Listener {
      * Send action bar confirmation message for saved value.
      */
     private void sendSaveMessage(Player player, String key, String value) {
-        LanguageManager lang = plugin.getLanguageManager();
-        String template = lang.getMessage("gui.config.saved");
-        template = template.replace("%key%", key).replace("%value%", value);
-        Component message = plugin.getMessageManager().parse(template, player);
-        player.sendActionBar(message);
+        String raw = plugin.getLanguageManager().getMessage("gui.config.setting.saved")
+                .replace("%key%", key).replace("%value%", value);
+        player.sendActionBar(plugin.getMessageManager().parse(raw, player).decoration(TextDecoration.ITALIC, false));
     }
 
     /**

@@ -246,15 +246,17 @@ help:
 
 # --- [ RULE PRESETS ] ---
 rules:
-  preset:
-    usage: "&cUsage: /vrules preset <save|load|list|delete> [name]"
-    saved: "&aRule preset &e%name% &asaved."
-    loaded: "&aRule preset &e%name% &aloaded."
-    deleted: "&aRule preset &e%name% &adeleted."
-    not-found: "&cNo preset named &e%name% &cfound."
-    none: "&7You have no saved rule presets."
-    list-header: "&6Your Rule Presets:"
-    list-entry: " &8• &e%name%"
+  usage: "&cUsage: /vrules [player] <rule> [true|false] [seconds] &7— omit seconds for permanent"
+  invalid-name: "&cInvalid rule name. Use /vrules to see available rules."
+  invalid-value: "&cValue must be 'true' or 'false'."
+  invalid-seconds: "&cInvalid number of seconds."
+  header: "&6Rules for %player%:"
+  line: " • %rule%: <%color%>%status%"
+  status-on: "ENABLED"
+  status-off: "DISABLED"
+  set: "&aRule '%rule%' for %player% set to %status%."
+  set-temp: "&aRule '%rule%' for %player% set to %status% for %seconds%s."
+  expired: "&eTemporary rule '%rule%' has expired."
 
 # --- [ BULK VANISH ] ---
 bulk:
@@ -326,3 +328,71 @@ scoreboard:
     disabled: "&cThe vanish scoreboard is disabled in config.yml."
     enabled: "&aVanish scoreboard enabled."
     disabled: "&cVanish scoreboard disabled."
+# --- [ RULE PRESETS ] ---
+rules-preset:
+  usage: "&cUsage: /vrules preset <save|load|list|delete> [name]"
+  saved: "&aRule preset &e%name% &asaved."
+  loaded: "&aRule preset &e%name% &aloaded."
+  deleted: "&aRule preset &e%name% &adeleted."
+  not-found: "&cNo preset named &e%name% &cfound."
+  none: "&7You have no saved rule presets."
+  list-header: "&6Your Rule Presets:"
+  list-entry: " &8• &e%name%"
+
+# --- [ GUI TEXT ] ---
+# GUI labels are looked up live from this file (shared with chat/command messages).
+gui:
+  rules:
+    title-prefix: "&6Rules: "
+    status-enabled: "&a✔ ENABLED"
+    status-disabled: "&c✘ DISABLED"
+    toggle-hint: "&7Click to toggle"
+  admin-dashboard:
+    title: "&6Vanish++ Admin Dashboard"
+    level: "&bLevel: %level%"
+    elapsed: "&eElapsed: %elapsed%"
+    reason: "&fReason: %reason%"
+    hint-rules: "&7Left-click → Rules GUI"
+    hint-unvanish: "&cRight-click → Unvanish"
+    vanished-count: "&eVanished: %count%"
+    close: "&cClose"
+  config:
+    title-prefix: "&6Vanish++ Config — "
+    no-permission: "&cYou don't have permission to use this command."
+    nav:
+      previous: "&6◀ PREVIOUS"
+      next: "&6NEXT ▶"
+      page-info: "&ePage %page% / %total%"
+    setting:
+      current-prefix: "&fCurrent: "
+      value-true: "&aTRUE"
+      value-false: "&cFALSE"
+      click-to-toggle: "&eClick to toggle"
+      numeric-controls: "&7Left: -1  |  Right: +1"
+      numeric-controls-shift: "&7Shift: ±10"
+      range: "&6Range: %min% → %max%"
+      display-only: "&7Display only"
+      saved: "&a✓ &b%key% &7→ &a%value%"
+    category:
+      general: "General Settings"
+      visibility: "Visibility & Rendering"
+      spectator: "Spectator Mode"
+      storage: "Database & Storage"
+      permissions: "Permission System"
+      features: "Features & Behavior"
+    setting-description:
+      vanish-appearance:
+        action-bar:
+          enabled: "Show a persistent action bar message while vanished"
+      vanish-gamemodes:
+        enabled: "Master switch for the double-shift spectator quick-toggle"
+        default-spectator: "Automatically enter spectator mode on vanish"
+      permissions:
+        default-vanish-level: "Vanish level granted to players by default"
+        default-see-level: "Minimum vanish level a player can see by default"
+        max-level: "Highest vanish/see level the permission system allows"
+      flight-control:
+        vanish-enable-fly: "Grant flight to vanished players"
+        unvanish-disable-fly: "Disable flight on unvanish"
+      invisibility-features:
+        prevent-sleeping: "Prevent sleeping while vanished"

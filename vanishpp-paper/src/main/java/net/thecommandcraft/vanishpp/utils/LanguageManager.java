@@ -98,9 +98,11 @@ public class LanguageManager {
 
     public String getMessage(String key) {
         String msg = messages.get(key);
-        // 兼容编程中直接使用扁平 messages 键（如 "config.reloaded"、"console-specify"、"no-permission"）
-        // 与带类型前缀的键（"messages.config.reloaded"、"gui.admin.title"、"scoreboards.title"）。
-        if (msg == null && !key.startsWith("messages.") && !key.startsWith("gui.") && !key.startsWith("scoreboards.")) {
+        // 统一解析到 messages 命名空间：
+        //  - 扁平键（"config.reloaded"、"console-specify"）→ "messages.config.reloaded"
+        //  - GUI 键（"gui.admin-dashboard.title"）→ "messages.gui.admin-dashboard.title"
+        //  - 已带前缀的键（"messages.x"、"scoreboards.x"）直接命中
+        if (msg == null && !key.startsWith("messages.") && !key.startsWith("scoreboards.")) {
             msg = messages.get("messages." + key);
         }
         if (msg == null) {

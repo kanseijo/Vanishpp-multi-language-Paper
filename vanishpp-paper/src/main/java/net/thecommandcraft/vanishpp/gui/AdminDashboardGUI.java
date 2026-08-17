@@ -1,10 +1,10 @@
 package net.thecommandcraft.vanishpp.gui;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.thecommandcraft.vanishpp.Vanishpp;
-import net.thecommandcraft.vanishpp.utils.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -39,9 +39,10 @@ public class AdminDashboardGUI implements Listener {
     }
 
     public void open(Player viewer) {
-        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
-        String title = lang.getMessage("gui.admin.title");
-        Inventory inv = Bukkit.createInventory(null, SIZE, plugin.getMessageManager().parse(title, null));
+        // Looked up fresh on every open (not cached in a static/constant) so a
+        // /vconfig reload picks up an edited messages.yml without a server restart.
+        String title = plugin.getLanguageManager().getMessage("gui.admin-dashboard.title");
+        Inventory inv = Bukkit.createInventory(null, SIZE, plugin.getMessageManager().parse(title, viewer));
         populateInventory(inv);
 
         // Info panel in last row
@@ -55,24 +56,26 @@ public class AdminDashboardGUI implements Listener {
     @EventHandler
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player viewer)) return;
+        // Identification relies solely on the viewer being tracked in openViewers — not
+        // on matching the inventory title text, since that title is now a live
+        // language-file lookup and could change mid-session across a /vconfig reload.
         if (!openViewers.contains(viewer.getUniqueId())) return;
-
-        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
-        String title = lang.getMessage("gui.admin.title");
-        // 检查标题是否匹配（忽略颜色代码）
-        String viewTitle = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
-                .legacySection().serialize(event.getView().title());
-        if (!viewTitle.contains(title.replaceAll("§[0-9a-fk-or]", ""))) return;
-
         event.setCancelled(true);
 
         ItemStack clicked = event.getCurrentItem();
-        if (clicked == null || clicked.getType() != Material.PLAYER_HEAD) return;
+        if (clicked == null) return;
+
+        if (clicked.getType() == Material.BARRIER) {
+            // Close button (slot 53) - previously did nothing beyond cancelling the click.
+            viewer.closeInventory();
+            return;
+        }
+        if (clicked.getType() != Material.PLAYER_HEAD) return;
 
         ItemMeta meta = clicked.getItemMeta();
         if (meta == null || !meta.hasDisplayName()) return;
 
-        // Extract UUID from lore
+        // Extract player name from lore (first lore line contains UUID as hidden key)
         String uuidStr = getLoreValue(meta, "§8UUID: ");
         if (uuidStr == null) return;
         UUID targetUuid;
@@ -120,8 +123,6 @@ public class AdminDashboardGUI implements Listener {
 
     @SuppressWarnings("deprecation")
     private ItemStack buildPlayerHead(Player p) {
-        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
-
         ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) skull.getItemMeta();
         if (meta == null) return skull;
@@ -131,79 +132,59 @@ public class AdminDashboardGUI implements Listener {
         long elapsedMs = System.currentTimeMillis()
                 - plugin.vanishStartTimes.getOrDefault(p.getUniqueId(), System.currentTimeMillis());
         long secs = elapsedMs / 1000;
-        // 构建时间字符串（使用语言文件中的 "分" 和 "秒"）
-        String minuteStr = lang.getMessage("time.minute");
-        String secondStr = lang.getMessage("time.second");
-        String elapsed = (secs / 60) + minuteStr + " " + (secs % 60) + secondStr;
+        String elapsed = (secs / 60) + "m " + (secs % 60) + "s";
         int level = plugin.getStorageProvider().getVanishLevel(p.getUniqueId());
 
-        // 玩家名字（显示名）
         meta.displayName(Component.text(p.getName(), NamedTextColor.GOLD)
                 .decoration(TextDecoration.ITALIC, false));
 
         List<Component> lore = new ArrayList<>();
-
-        // UUID 行保留不变（用于内部解析）
+        // The UUID marker line stays a raw, untranslated component — it's a hidden data
+        // carrier read back by onClick(), not user-facing text.
         lore.add(Component.text("§8UUID: " + p.getUniqueId()).decoration(TextDecoration.ITALIC, false));
-
-        // 等级
-        String levelMsg = lang.getMessage("gui.admin.level", "level", String.valueOf(level));
-        lore.add(plugin.getMessageManager().parse(levelMsg, null).decoration(TextDecoration.ITALIC, false));
-
-        // 已持续
-        String elapsedMsg = lang.getMessage("gui.admin.elapsed", "time", elapsed);
-        lore.add(plugin.getMessageManager().parse(elapsedMsg, null).decoration(TextDecoration.ITALIC, false));
-
-        // 原因
-        if (reason != null && !reason.isBlank()) {
-            String reasonMsg = lang.getMessage("gui.admin.reason", "reason", reason);
-            lore.add(plugin.getMessageManager().parse(reasonMsg, null).decoration(TextDecoration.ITALIC, false));
-        }
-
+        lore.add(guiLine("gui.admin-dashboard.level", "%level%", String.valueOf(level)));
+        lore.add(guiLine("gui.admin-dashboard.elapsed", "%elapsed%", elapsed));
+        if (reason != null && !reason.isBlank())
+            lore.add(guiLine("gui.admin-dashboard.reason", "%reason%", reason));
         lore.add(Component.empty());
-
-        // 左键提示
-        String leftClickMsg = lang.getMessage("gui.admin.left_click");
-        lore.add(plugin.getMessageManager().parse(leftClickMsg, null).decoration(TextDecoration.ITALIC, false));
-
-        // 右键提示
-        String rightClickMsg = lang.getMessage("gui.admin.right_click");
-        lore.add(plugin.getMessageManager().parse(rightClickMsg, null).decoration(TextDecoration.ITALIC, false));
-
+        lore.add(guiLine("gui.admin-dashboard.hint-rules"));
+        lore.add(guiLine("gui.admin-dashboard.hint-unvanish"));
         meta.lore(lore);
         skull.setItemMeta(meta);
         return skull;
     }
 
     private ItemStack buildInfoItem() {
-        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
-        int count = plugin.getRawVanishedPlayers().size();
-        String msg = lang.getMessage("gui.admin.vanished_count", "count", String.valueOf(count));
-
         ItemStack item = new ItemStack(Material.PAPER);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(plugin.getMessageManager().parse(msg, null)
-                    .colorIfAbsent(NamedTextColor.YELLOW)
-                    .decoration(TextDecoration.ITALIC, false));
+            int count = plugin.getRawVanishedPlayers().size();
+            meta.displayName(guiLine("gui.admin-dashboard.vanished-count", "%count%", String.valueOf(count)));
             item.setItemMeta(meta);
         }
         return item;
     }
 
     private ItemStack buildCloseItem() {
-        LanguageManager lang = plugin.getConfigManager().getLanguageManager();
-        String msg = lang.getMessage("gui.admin.close_button");
-
         ItemStack item = new ItemStack(Material.BARRIER);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(plugin.getMessageManager().parse(msg, null)
-                    .colorIfAbsent(NamedTextColor.RED)
-                    .decoration(TextDecoration.ITALIC, false));
+            meta.displayName(guiLine("gui.admin-dashboard.close"));
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    /** Fresh language-file lookup, parsed through MessageManager, with default italics off. */
+    private Component guiLine(String key) {
+        return plugin.getMessageManager().parse(plugin.getLanguageManager().getMessage(key), null)
+                .decoration(TextDecoration.ITALIC, false);
+    }
+
+    /** Same as {@link #guiLine(String)} but substitutes a single %token% placeholder first. */
+    private Component guiLine(String key, String token, String value) {
+        String raw = plugin.getLanguageManager().getMessage(key).replace(token, value);
+        return plugin.getMessageManager().parse(raw, null).decoration(TextDecoration.ITALIC, false);
     }
 
     private String getLoreValue(ItemMeta meta, String prefix) {

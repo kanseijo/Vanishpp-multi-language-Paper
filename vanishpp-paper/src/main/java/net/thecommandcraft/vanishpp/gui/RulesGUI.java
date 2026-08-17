@@ -3,9 +3,8 @@ package net.thecommandcraft.vanishpp.gui;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.thecommandcraft.vanishpp.Vanishpp;
-import net.thecommandcraft.vanishpp.utils.LanguageManager;
+import net.thecommandcraft.vanishpp.config.RuleManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -19,9 +18,23 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.*;
 
+/**
+ * Clickable inventory GUI for managing per-player vanish rules.
+ *
+ * <p>Each rule is shown as a dyed wool block:
+ * <ul>
+ *   <li>Green = rule enabled</li>
+ *   <li>Red   = rule disabled</li>
+ * </ul>
+ * Click to toggle. The GUI auto-refreshes to reflect the new state.
+ *
+ * <p>This class is both a factory (call {@link #open}) and a Listener — register it once per
+ * plugin lifecycle via {@link Bukkit#getPluginManager()#registerEvents}.
+ */
 public class RulesGUI implements Listener {
 
     private final Vanishpp plugin;
+    /** viewer UUID → target player UUID */
     private final Map<UUID, UUID> openGuis = new HashMap<>();
 
     public RulesGUI(Vanishpp plugin) {
@@ -29,15 +42,19 @@ public class RulesGUI implements Listener {
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
+    /**
+     * Opens the rules GUI for {@code viewer}, displaying (and allowing editing of)
+     * {@code target}'s rules.
+     */
     public void open(Player viewer, Player target) {
-        LanguageManager lang = plugin.getLanguageManager();
-        String titlePrefix = lang.getMessage("gui.rules.title");
-        String title = titlePrefix + target.getName();
-
         List<String> rules = sortedRules();
         int size = ((rules.size() / 9) + 1) * 9;
-        Inventory inv = Bukkit.createInventory(null, Math.max(size, 9),
-                plugin.getMessageManager().parse(title, null));
+        // Looked up fresh on every open (not cached in a static/constant) so a
+        // /vconfig reload picks up an edited messages.yml without a server restart.
+        String titlePrefix = plugin.getLanguageManager().getMessage("gui.rules.title-prefix");
+        Component title = plugin.getMessageManager().parse(titlePrefix, viewer)
+                .append(Component.text(target.getName()));
+        Inventory inv = Bukkit.createInventory(null, Math.max(size, 9), title);
 
         for (int i = 0; i < rules.size(); i++) {
             inv.setItem(i, buildItem(target, rules.get(i)));
@@ -51,13 +68,10 @@ public class RulesGUI implements Listener {
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player viewer)) return;
         UUID viewerUuid = viewer.getUniqueId();
+        // Identification relies solely on the viewer being tracked in openGuis — not on
+        // matching the inventory title text, since that title is now a live language-file
+        // lookup and could change mid-session across a /vconfig reload.
         if (!openGuis.containsKey(viewerUuid)) return;
-
-        LanguageManager lang = plugin.getLanguageManager();
-        String titlePrefix = lang.getMessage("gui.rules.title");
-        String viewTitle = LegacyComponentSerializer.legacySection().serialize(event.getView().title());
-        String plainPrefix = titlePrefix.replaceAll("§[0-9a-fk-or]", "");
-        if (!viewTitle.contains(plainPrefix)) return;
 
         event.setCancelled(true);
         ItemStack clicked = event.getCurrentItem();
@@ -69,18 +83,20 @@ public class RulesGUI implements Listener {
         Player target = Bukkit.getPlayer(targetUuid);
         if (target == null) { viewer.closeInventory(); return; }
 
-        String displayName = LegacyComponentSerializer.legacySection().serialize(meta.displayName());
-        String chineseName = displayName.replaceAll("§[0-9a-fk-or]", "").trim();
+        // Extract rule name from item name
+        String displayName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                .legacySection().serialize(meta.displayName());
+        // Display name format: "§acan_break_blocks" or "§ccan_break_blocks"
+        String ruleName = displayName.replaceAll("§[0-9a-fk-or]", "").trim();
 
-        String ruleName = getRuleKeyFromDisplay(chineseName);
-        if (ruleName == null || !plugin.getRuleManager().getAvailableRules().contains(ruleName)) return;
-
+        if (!plugin.getRuleManager().getAvailableRules().contains(ruleName)) return;
         if (!viewer.hasPermission("vanishpp.rules")
                 && (!viewer.equals(target) || !viewer.hasPermission("vanishpp.rules.others"))) return;
 
         boolean current = plugin.getRuleManager().getRule(target, ruleName);
         plugin.getRuleManager().setRule(target, ruleName, !current);
 
+        // Refresh the clicked slot
         event.getClickedInventory().setItem(event.getSlot(), buildItem(target, ruleName));
     }
 
@@ -89,64 +105,26 @@ public class RulesGUI implements Listener {
         openGuis.remove(event.getPlayer().getUniqueId());
     }
 
-    private ItemStack buildItem(Player target, String rule) {
-        LanguageManager lang = plugin.getLanguageManager();
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
+    private ItemStack buildItem(Player target, String rule) {
         boolean enabled = plugin.getRuleManager().getRule(target, rule);
         Material mat = enabled ? Material.LIME_WOOL : Material.RED_WOOL;
         ItemStack item = new ItemStack(mat);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            String displayName = getRuleDisplayName(rule);
-            Component displayComponent = plugin.getMessageManager().parse(displayName, null);
-            displayComponent = displayComponent.colorIfAbsent(
-                    enabled ? NamedTextColor.GREEN : NamedTextColor.RED);
-            meta.displayName(displayComponent.decoration(TextDecoration.ITALIC, false));
-
-            String statusKey = enabled ? "gui.rules.status_enabled" : "gui.rules.status_disabled";
-            String status = lang.getMessage(statusKey);
-            String toggleHint = lang.getMessage("gui.rules.toggle_hint");
-
+            meta.displayName(Component.text(rule, enabled ? NamedTextColor.GREEN : NamedTextColor.RED)
+                    .decoration(TextDecoration.ITALIC, false));
+            String statusKey = enabled ? "gui.rules.status-enabled" : "gui.rules.status-disabled";
             meta.lore(List.of(
-                    plugin.getMessageManager().parse(status, null)
-                            .colorIfAbsent(enabled ? NamedTextColor.GREEN : NamedTextColor.RED)
+                    plugin.getMessageManager().parse(plugin.getLanguageManager().getMessage(statusKey), null)
                             .decoration(TextDecoration.ITALIC, false),
-                    plugin.getMessageManager().parse(toggleHint, null)
-                            .colorIfAbsent(NamedTextColor.GRAY)
+                    plugin.getMessageManager().parse(plugin.getLanguageManager().getMessage("gui.rules.toggle-hint"), null)
                             .decoration(TextDecoration.ITALIC, false)
             ));
             item.setItemMeta(meta);
         }
         return item;
-    }
-
-    // ── 从语言文件获取规则显示名 ──
-    private String getRuleDisplayName(String ruleKey) {
-        LanguageManager lang = plugin.getLanguageManager();
-        String display = lang.getMessage("gui.rules.names." + ruleKey);
-        if (display == null || display.startsWith("Missing:") || display.startsWith("<red>[Missing:")) {
-            return ruleKey.replace('_', ' ');
-        }
-        return display;
-    }
-
-    // ── 从显示名反向查找英文键 ──
-    private String getRuleKeyFromDisplay(String displayName) {
-        LanguageManager lang = plugin.getLanguageManager();
-        Set<String> availableRules = plugin.getRuleManager().getAvailableRules();
-        for (String rule : availableRules) {
-            String translated = lang.getMessage("gui.rules.names." + rule);
-            if (translated != null && translated.equalsIgnoreCase(displayName)) {
-                return rule;
-            }
-        }
-        // 回退：尝试直接匹配英文键（防止语言文件缺失）
-        for (String rule : availableRules) {
-            if (rule.equalsIgnoreCase(displayName)) {
-                return rule;
-            }
-        }
-        return null;
     }
 
     private List<String> sortedRules() {
