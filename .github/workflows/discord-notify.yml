@@ -126,4 +126,16 @@ jobs:
             --arg url "$URL" \
             --arg description "$DESCRIPTION" \
             '{embeds: [{title: $title, url: $url, description: $description}]}')"
-          curl -sS -X POST -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
+
+          # curl alone doesn't fail the step on an HTTP error response (only on a transport-
+          # level failure), so a rejected/misconfigured webhook silently reported "success"
+          # here forever - print the actual response and fail loudly on anything but 2xx.
+          http_code="$(curl -sS -o response.txt -w '%{http_code}' \
+            -X POST -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL")"
+          echo "Discord webhook responded with HTTP $http_code:"
+          cat response.txt
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "::error::Discord webhook rejected the payload (HTTP $http_code) - check DISCORD_WEBHOOK_URL"
+            exit 1
+          fi
