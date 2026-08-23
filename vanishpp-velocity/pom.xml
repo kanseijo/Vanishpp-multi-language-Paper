@@ -134,5 +134,13 @@
             <version>2.2</version>
             <scope>provided</scope>
         </dependency>
+
+        <!-- LuckPerms API - same version as vanishpp-paper, keep both platforms in sync -->
+        <dependency>
+            <groupId>net.luckperms</groupId>
+            <artifactId>api</artifactId>
+            <version>5.4</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 </project>

@@ -10,6 +10,7 @@ import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import net.thecommandcraft.vanishpp.common.protocol.VppChannel;
 import net.thecommandcraft.vanishpp.velocity.commands.VanishReloadCommand;
 import net.thecommandcraft.vanishpp.velocity.config.VelocityConfigManager;
+import net.thecommandcraft.vanishpp.velocity.hooks.LuckPermsHook;
 import net.thecommandcraft.vanishpp.velocity.listener.VelocityPlayerListener;
 import net.thecommandcraft.vanishpp.velocity.messaging.PaperChannelDispatcher;
 import net.thecommandcraft.vanishpp.velocity.messaging.PaperChannelListener;
@@ -30,6 +31,7 @@ public class VanishppVelocity {
     private ProxyStateManager stateManager;
     private PaperChannelDispatcher dispatcher;
     private ProxyUpdateChecker updateChecker;
+    private LuckPermsHook luckPermsHook;
 
     @Inject
     public VanishppVelocity(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
@@ -47,6 +49,19 @@ public class VanishppVelocity {
         // 2. State (DB connection)
         stateManager = new ProxyStateManager(this, configManager);
         stateManager.init();
+
+        // 2b. LuckPerms context (optional - only if LuckPerms is present on the proxy)
+        if (proxy.getPluginManager().getPlugin("luckperms").isPresent()) {
+            try {
+                luckPermsHook = new LuckPermsHook(this, stateManager);
+                luckPermsHook.load();
+                stateManager.setLuckPermsHook(luckPermsHook);
+                logger.info("Hooked into LuckPerms - registered vanishpp:vanished context.");
+            } catch (Throwable e) {
+                logger.warn("Found LuckPerms but failed to hook into it — vanishpp:vanished context will not be available.", e);
+                luckPermsHook = null;
+            }
+        }
 
         // 3. Messaging
         dispatcher = new PaperChannelDispatcher(proxy);
@@ -75,6 +90,7 @@ public class VanishppVelocity {
 
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
+        if (luckPermsHook != null) luckPermsHook.unload();
         if (stateManager != null) stateManager.shutdown();
         logger.info("Vanish++ Velocity disabled.");
     }
@@ -87,4 +103,5 @@ public class VanishppVelocity {
     public ProxyStateManager getStateManager()     { return stateManager; }
     public PaperChannelDispatcher getDispatcher()  { return dispatcher; }
     public ProxyUpdateChecker getUpdateChecker()   { return updateChecker; }
+    public LuckPermsHook getLuckPermsHook()        { return luckPermsHook; }
 }

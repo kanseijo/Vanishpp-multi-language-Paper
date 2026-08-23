@@ -82,8 +82,15 @@ public class Vanishpp extends JavaPlugin implements Listener {
     public final Map<UUID, UUID> spectateFollowTargets = new ConcurrentHashMap<>();
     /** Spectator origin locations to teleport back to on stop */
     public final Map<UUID, Location> spectateOrigins = new ConcurrentHashMap<>();
-    /** Gamemodes before entering spectator via /vspec or /vfollow */
-    public final Map<UUID, GameMode> spectateOriginalGamemodes = new ConcurrentHashMap<>();
+    /**
+     * Single source of truth for "gamemode to restore" across every mechanism that can force
+     * a player into an override gamemode while vanished: /vspec, /vfollow, the double-shift
+     * spectator toggle, and the pre-vanish gamemode snapshot. Previously these were 3
+     * independent, uncoordinated stores (this map for /vspec+/vfollow only, plus two separate
+     * player-metadata keys) that could clobber each other's saved value when more than one
+     * was active for the same player - see saveGamemodeForRestore()/restoreSavedGamemode().
+     */
+    public final Map<UUID, GameMode> pendingGamemodeRestore = new ConcurrentHashMap<>();
     /** Incognito mode: player UUID → fake name */
     public final Map<UUID, String> incognitoNames = new ConcurrentHashMap<>();
 
@@ -845,7 +852,7 @@ public class Vanishpp extends JavaPlugin implements Listener {
         playerNameCache.values().remove(uuid);
         spectateFollowTargets.remove(uuid);
         spectateOrigins.remove(uuid);
-        spectateOriginalGamemodes.remove(uuid);
+        pendingGamemodeRestore.remove(uuid);
         incognitoNames.remove(uuid);
         vanishReasons.remove(uuid);
         // Record session on quit if still vanished
@@ -865,16 +872,28 @@ public class Vanishpp extends JavaPlugin implements Listener {
     }
 
     public GameMode getPreVanishGamemodePublic(Player player) {
-        return getPreVanishGamemode(player);
+        return pendingGamemodeRestore.getOrDefault(player.getUniqueId(), GameMode.SURVIVAL);
     }
 
-    private GameMode getPreVanishGamemode(Player player) {
-        List<org.bukkit.metadata.MetadataValue> meta = player.getMetadata("vanishpp_pre_vanish_gamemode");
-        if (!meta.isEmpty()) {
-            Object val = meta.get(0).value();
-            if (val instanceof GameMode gm) return gm;
-        }
-        return GameMode.SURVIVAL;
+    /**
+     * Save the player's current gamemode for later restoration, but only if nothing is
+     * already pending - prevents one override mechanism (vspec/vfollow/double-shift/vanish)
+     * from clobbering another's saved original gamemode when more than one is active at
+     * once for the same player. Call before switching a player into any vanish-related
+     * override gamemode.
+     */
+    public void saveGamemodeForRestore(Player player) {
+        pendingGamemodeRestore.putIfAbsent(player.getUniqueId(), player.getGameMode());
+    }
+
+    /**
+     * Restore and clear the saved gamemode. Always applies a gamemode (falls back to
+     * SURVIVAL if nothing was pending, e.g. the player entered spectator via a path outside
+     * Vanish++'s own tracking) so callers never leave a player stuck in SPECTATOR.
+     */
+    public void restoreSavedGamemode(Player player) {
+        GameMode gm = pendingGamemodeRestore.remove(player.getUniqueId());
+        player.setGameMode(gm != null ? gm : GameMode.SURVIVAL);
     }
 
     // --- CORE LOGIC ---
@@ -924,6 +943,10 @@ public class Vanishpp extends JavaPlugin implements Listener {
             if (!configManager.actionBarEnabled) return;
             long now = System.currentTimeMillis();
             for (UUID uuid : vanishedPlayers) {
+                // /vspec and /vfollow own the action bar for this player while active (their
+                // own periodic task drives the spectate overlay) - sending the generic text
+                // here too raced with it and caused visible flicker between the two.
+                if (spectateFollowTargets.containsKey(uuid)) continue;
                 Player p = Bukkit.getPlayer(uuid);
                 if (p != null && p.isOnline()) {
                     long pausedUntil = actionBarPausedUntil.getOrDefault(uuid, 0L);
@@ -1183,17 +1206,21 @@ public class Vanishpp extends JavaPlugin implements Listener {
 
         player.setCollidable(true);
 
-        // If the player is in spectator (from double-shift toggle), restore their pre-vanish gamemode.
-        // Players with vanishpp.spectator.bypass are allowed to stay in spectator after unvanish.
+        // If the player is in spectator (double-shift toggle, /vspec, or /vfollow), restore
+        // their pre-vanish gamemode. Also drop any active /vspec/vfollow tracking - leaving it
+        // behind would let VanishFollowCommand's periodic task keep re-teleporting an already-
+        // unvanished, no-longer-spectator player to the follow target every few ticks.
+        // Players with vanishpp.spectator.bypass are allowed to stay in spectator (and keep
+        // following/spectating) after unvanish.
         if (player.getGameMode() == GameMode.SPECTATOR
                 && !permissionManager.hasPermission(player, "vanishpp.spectator.bypass")) {
-            GameMode prevGm = getPreVanishGamemode(player);
-            player.setGameMode(prevGm);
+            spectateFollowTargets.remove(player.getUniqueId());
+            spectateOrigins.remove(player.getUniqueId());
+            restoreSavedGamemode(player);
             String msg = configManager.getLanguageManager().getMessage("spectator.forced-unvanish")
-                    .replace("%gamemode%", prevGm.name().toLowerCase());
+                    .replace("%gamemode%", player.getGameMode().name().toLowerCase());
             messageManager.sendMessage(player, msg);
         }
-        player.removeMetadata("vanishpp_pre_vanish_gamemode", this);
 
         // Only handle night vision if the plugin added it
         if (player.hasMetadata("vanishpp_night_vision")) {
@@ -1316,14 +1343,11 @@ public class Vanishpp extends JavaPlugin implements Listener {
     }
 
     public void vanishPlayer(Player player, CommandSender executor) {
-        // Store the gamemode from before vanish so we can restore it on unvanish.
-        // Only set on an explicit vanish — not on join restore (applyVanishEffects).
-        // Guard against overwrite if already set (e.g., re-vanish without unvanish).
-        if (!player.hasMetadata("vanishpp_pre_vanish_gamemode")) {
-            GameMode gmToStore = player.getGameMode() == GameMode.SPECTATOR
-                    ? GameMode.SURVIVAL : player.getGameMode();
-            player.setMetadata("vanishpp_pre_vanish_gamemode", new FixedMetadataValue(this, gmToStore));
-        }
+        // No gamemode snapshot needed here: vanish itself never forces spectator mode, and
+        // whichever mechanism actually puts the player into spectator later (/vspec,
+        // /vfollow, double-shift toggle) saves the real original gamemode itself via
+        // saveGamemodeForRestore()'s putIfAbsent guard - so it's always captured at the
+        // right moment regardless of vanish/spectate ordering.
         applyVanishEffects(player);
         if (isValidMessage(configManager.vanishMessage)) {
             player.sendMessage(messageManager.parse(configManager.vanishMessage, player));

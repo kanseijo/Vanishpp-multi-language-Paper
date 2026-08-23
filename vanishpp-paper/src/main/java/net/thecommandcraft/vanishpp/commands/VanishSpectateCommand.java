@@ -73,7 +73,7 @@ public class VanishSpectateCommand implements CommandExecutor, TabCompleter {
 
         // Save origin
         plugin.spectateOrigins.put(player.getUniqueId(), player.getLocation().clone());
-        plugin.spectateOriginalGamemodes.put(player.getUniqueId(), player.getGameMode());
+        plugin.saveGamemodeForRestore(player);
 
         player.setGameMode(GameMode.SPECTATOR);
         player.teleportAsync(target.getLocation());
@@ -88,8 +88,6 @@ public class VanishSpectateCommand implements CommandExecutor, TabCompleter {
     private void stopSpec(Player player) {
         UUID uuid = player.getUniqueId();
         Location origin = plugin.spectateOrigins.remove(uuid);
-        GameMode gm = plugin.spectateOriginalGamemodes.remove(uuid);
-        plugin.spectateFollowTargets.remove(uuid);
 
         if (origin == null) {
             plugin.getMessageManager().sendMessage(player,
@@ -97,7 +95,8 @@ public class VanishSpectateCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        player.setGameMode(gm != null ? gm : GameMode.SURVIVAL);
+        plugin.spectateFollowTargets.remove(uuid);
+        plugin.restoreSavedGamemode(player);
         player.teleportAsync(origin);
         plugin.getMessageManager().sendMessage(player,
                 plugin.getConfigManager().getLanguageManager().getMessage("vspec.stopped"));
