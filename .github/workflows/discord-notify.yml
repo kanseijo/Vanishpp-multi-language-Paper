@@ -2,7 +2,7 @@ name: Discord Reports Notify
 
 # Replaces the old raw repo webhook -> Discord `/github` integration, which had no way to
 # filter by actor. This workflow covers the same event set that webhook was subscribed to
-# (issues, issue_comment, pull_request, pull_request_review, pull_request_review_comment,
+# (issues, issue_comment, pull_request_target, pull_request_review, pull_request_review_comment,
 # release) and additionally only posts when the action was performed by someone OTHER than
 # the repo owner, so the reports channel only pings for things the owner didn't already know
 # about firsthand.
@@ -15,7 +15,12 @@ name: Discord Reports Notify
 on:
   issues:
   issue_comment:
-  pull_request:
+  # pull_request_target (not pull_request): PRs from forks never get repo secrets under
+  # pull_request, so DISCORD_WEBHOOK_URL came through empty and every notify for a fork PR
+  # failed. pull_request_target runs in the base repo's context instead, so secrets are
+  # available - safe here specifically because this workflow never checks out or runs any
+  # of the PR's own code, only reads event metadata from $GITHUB_EVENT_PATH.
+  pull_request_target:
   pull_request_review:
   pull_request_review_comment:
   release:
@@ -63,7 +68,7 @@ jobs:
                 title="Comment on #$(jq -r '.issue.number' "$GITHUB_EVENT_PATH") $(jq -r '.issue.title' "$GITHUB_EVENT_PATH")"
                 url="$(jq -r '.comment.html_url' "$GITHUB_EVENT_PATH")"
                 ;;
-              pull_request)
+              pull_request_target)
                 title="PR $(jq -r '.action' "$GITHUB_EVENT_PATH"): $(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH") (#$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH"))"
                 url="$(jq -r '.pull_request.html_url' "$GITHUB_EVENT_PATH")"
                 ;;
