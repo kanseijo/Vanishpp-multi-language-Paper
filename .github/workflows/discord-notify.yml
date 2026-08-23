@@ -102,7 +102,6 @@ jobs:
                 description=""
                 ;;
             esac
-            title="[$REPO] $title"
           fi
 
           # Green for opened/reopened/approved, purple for a merged PR, red for
@@ -154,7 +153,6 @@ jobs:
           DESCRIPTION: ${{ steps.context.outputs.description }}
           COLOR: ${{ steps.context.outputs.color }}
           SENDER: ${{ steps.context.outputs.sender }}
-          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -163,21 +161,24 @@ jobs:
             --arg url "$URL" \
             --arg description "$DESCRIPTION" \
             --argjson color "$COLOR" \
-            --arg authorName "$REPO" \
-            --arg authorUrl "https://github.com/$REPO" \
-            --arg authorIcon "https://github.githubassets.com/favicons/favicon.png" \
-            --arg footerText "$SENDER" \
-            --arg footerIcon "https://github.com/$SENDER.png" \
+            --arg webhookName "GitHub" \
+            --arg webhookIcon "https://github.githubassets.com/favicons/favicon.png" \
+            --arg authorName "$SENDER" \
+            --arg authorUrl "https://github.com/$SENDER" \
+            --arg authorIcon "https://github.com/$SENDER.png" \
             --arg timestamp "$timestamp" \
-            '{embeds: [{
-              title: $title,
-              url: $url,
-              description: $description,
-              color: $color,
-              author: {name: $authorName, url: $authorUrl, icon_url: $authorIcon},
-              footer: {text: $footerText, icon_url: $footerIcon},
-              timestamp: $timestamp
-            }]}')"
+            '{
+              username: $webhookName,
+              avatar_url: $webhookIcon,
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $description,
+                color: $color,
+                author: {name: $authorName, url: $authorUrl, icon_url: $authorIcon},
+                timestamp: $timestamp
+              }]
+            }')"
 
           # curl alone doesn't fail the step on an HTTP error response (only on a transport-
           # level failure), so a rejected/misconfigured webhook silently reported "success"
