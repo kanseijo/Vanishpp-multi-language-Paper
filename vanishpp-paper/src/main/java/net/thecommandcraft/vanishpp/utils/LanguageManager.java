@@ -27,6 +27,11 @@ public class LanguageManager {
         this.plugin = plugin;
     }
 
+    /** Default (en-us) string table, kept as a per-key fallback when the active language is missing a key. */
+    private final Map<String, String> fallbackMessages = new HashMap<>();
+    /** Raw config of the bundled en-us files, used as the source for self-healing missing keys. */
+    private final Map<String, YamlConfiguration> defaultTypeConfigs = new HashMap<>();
+
     public void load() {
         String lang = plugin.getConfigManager().getLanguage();
         loadLanguage(lang);
@@ -35,22 +40,36 @@ public class LanguageManager {
     private void loadLanguage(String lang) {
         messages.clear();
         typeConfigs.clear();
+        fallbackMessages.clear();
+        defaultTypeConfigs.clear();
         currentLang = lang;
         int loaded = 0;
 
+        // 1. Load the bundled en-us files as the fallback/default source. These always
+        //    exist in the jar, so they provide both the en-us per-key fallback and the
+        //    definitive set of keys for self-healing an out-of-date user file.
         for (String type : FILE_TYPES) {
-            YamlConfiguration config = loadRaw(type, lang);
+            YamlConfiguration defaults = loadFromJar(type, "en-us");
+            if (defaults != null) {
+                defaultTypeConfigs.put(type, defaults);
+                for (String key : defaults.getKeys(true)) {
+                    if (defaults.isString(key)) {
+                        String flatKey = stripTypeWrapper(key, type);
+                        fallbackMessages.put(type + "." + flatKey, defaults.getString(key));
+                    }
+                }
+            }
+        }
+
+        // 2. Load the active-language files (user copy first, then jar), self-healing any
+        //    keys the user's file is missing by writing the bundled default back to disk.
+        for (String type : FILE_TYPES) {
+            YamlConfiguration config = loadRawAndSelfHeal(type, lang);
             if (config == null) {
                 continue;
             }
             typeConfigs.put(type, config);
 
-            // Normalize keys into the "type.flatKey" namespace and strip any redundant
-            // top-level wrapper the file itself carries (e.g. scoreboards files have
-            // their own "scoreboards:" root). Callers can then hit keys either as flat
-            // keys ("config.reloaded") or with a type prefix ("messages.config.reloaded",
-            // "scoreboards.title", "gui.admin.title"). List keys are handled by
-            // getStringList and never enter the string table.
             for (String key : config.getKeys(true)) {
                 if (config.isString(key)) {
                     String flatKey = stripTypeWrapper(key, type);
@@ -63,21 +82,125 @@ public class LanguageManager {
     }
 
     /**
-     * Loads one language file for a type (tries the requested language first, falls back
-     * to en-us). Returns null if the type cannot be loaded. Tolerates both "-" and "_"
-     * separators in the language code so the file name resolves whether it lives in the
-     * plugin data folder or inside the jar.
+     * Loads the active-language file for a type, returning the raw config. Unlike the old
+     * loader this also sails through the self-heal step: any string key present in the
+     * bundled en-us default but missing from the active language file is filled in with the
+     * en-us value and (when the file lives on disk) persisted back. This restores the
+     * original behavior where a plugin update that adds keys just worked for existing installs.
      */
-    private YamlConfiguration loadRaw(String type, String lang) {
+    private YamlConfiguration loadRawAndSelfHeal(String type, String lang) {
+        if ("en-us".equalsIgnoreCase(lang)) {
+            // en-us itself may have a customized on-disk copy missing newer keys — heal it too.
+            File disk = findOnDisk(type, lang);
+            if (disk != null) {
+                YamlConfiguration user = YamlConfiguration.loadConfiguration(disk);
+                boolean changed = selfHeal(user, type);
+                if (changed) {
+                    saveConfiguration(user, disk);
+                }
+                return user;
+            }
+            // No customized copy — the bundled en-us is authoritative and already complete.
+            return loadFromJar(type, lang);
+        }
+
+        // 1. User-customized file on disk (self-heal and persist)
+        File disk = findOnDisk(type, lang);
+        if (disk != null) {
+            YamlConfiguration user = YamlConfiguration.loadConfiguration(disk);
+            boolean changed = selfHeal(user, type);
+            if (changed) {
+                saveConfiguration(user, disk);
+            }
+            return user;
+        }
+
+        // 2. No user file — extract the bundled active-language file to disk (if present) so
+        //    the user gets a matching on-disk file, then self-heal it too.
+        YamlConfiguration jar = loadFromJar(type, lang);
+        if (jar != null) {
+            File target = new File(plugin.getDataFolder(),
+                    "languages/" + type + "_" + lang + ".yml");
+            boolean extracted = true;
+            try {
+                if (!target.getParentFile().exists() && !target.getParentFile().mkdirs()) {
+                    extracted = false;
+                }
+                if (extracted) {
+                    saveConfiguration(jar, target);
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("Could not write language file " + target.getName() + ": " + e.getMessage());
+            }
+            return extracted ? loadFromJar(type, lang) : jar;
+        }
+        return null;
+    }
+
+    /**
+     * Fills any string key present in the bundled en-us default but missing from the given
+     * config, using the en-us value. Returns true if anything was added. List keys are left
+     * untouched (best-effort: only top-level string defaults under the type are considered
+     * for the scoreboards wrapper; suite always exists for messages).
+     */
+    private boolean selfHeal(YamlConfiguration config, String type) {
+        YamlConfiguration defaults = defaultTypeConfigs.get(type);
+        if (defaults == null) {
+            return false;
+        }
+        boolean changed = false;
+        // The bundled defaults carry top-level keys (messages: flat; scoreboards: under "scoreboards").
+        for (String key : defaults.getKeys(true)) {
+            if (!defaults.isString(key)) {
+                continue;
+            }
+            // Map the default's key space to what the user file expects.
+            String userKey = mapKeyToUserSpace(key, type);
+            if (!config.contains(userKey) || !config.isString(userKey)) {
+                config.set(userKey, defaults.getString(key));
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** Maps a bundled-default key to the key space of a user file of the same type. */
+    private String mapKeyToUserSpace(String key, String type) {
+        String flat = stripTypeWrapper(key, type);
+        if ("scoreboards".equals(type)) {
+            // scoreboards files are wrapped under a "scoreboards:" top level
+            return "scoreboards." + flat;
+        }
+        return flat; // messages files are flat
+    }
+
+    /** Persists a YamlConfiguration back to disk, creating parent dirs as needed. */
+    private void saveConfiguration(YamlConfiguration config, File target) {
+        try {
+            if (!target.getParentFile().exists() && !target.getParentFile().mkdirs()) {
+                return;
+            }
+            config.save(target);
+        } catch (Exception e) {
+            plugin.getLogger().warning("Could not self-heal language file " + target.getName() + ": " + e.getMessage());
+        }
+    }
+
+    /** Looks up an on-disk language file for a type/lang, tolerating - and _ separators. */
+    private File findOnDisk(String type, String lang) {
         String fileName = type + "_" + lang + ".yml";
-        // 1. Plugin data folder (user customizations take priority)
         for (String candidate : fileNameVariants(fileName)) {
             File langFile = new File(plugin.getDataFolder(), "languages/" + candidate);
             if (langFile.exists()) {
-                return YamlConfiguration.loadConfiguration(langFile);
+                return langFile;
             }
         }
-        // 2. Resources inside the jar
+        return null;
+    }
+
+    /** Loads a language file from the jar resources only, returning null if absent. */
+    private YamlConfiguration loadFromJar(String type, String lang) {
+        String fileName = type + "_" + lang + ".yml";
         for (String candidate : fileNameVariants(fileName)) {
             InputStream in = plugin.getResource("languages/" + candidate);
             if (in != null) {
@@ -114,8 +237,21 @@ public class LanguageManager {
             msg = messages.get("messages." + key);
         }
         if (msg == null) {
-            plugin.getLogger().warning("Missing message key: " + key);
-            return "<red>[Missing: " + key + "]";
+            // Fall back to the bundled en-us value for this key before showing a missing-key
+            // marker, so translations that have not caught up still render something useful.
+            String fallbackKey = key;
+            if (!key.startsWith("messages.") && !key.startsWith("scoreboards.")) {
+                fallbackKey = "messages." + key;
+            }
+            msg = fallbackMessages.get(fallbackKey);
+            // Try flat and scoreboard-typed spellings too.
+            if (msg == null && !key.startsWith("messages.") && !key.startsWith("scoreboards.")) {
+                msg = fallbackMessages.get("scoreboards." + key);
+            }
+            if (msg == null) {
+                plugin.getLogger().warning("Missing message key: " + key);
+                return "<red>[Missing: " + key + "]";
+            }
         }
         return msg;
     }
