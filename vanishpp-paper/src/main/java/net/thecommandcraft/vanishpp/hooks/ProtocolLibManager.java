@@ -14,14 +14,29 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ProtocolLibManager {
 
     private final Vanishpp plugin;
     private ProtocolManager protocolManager;
 
+    /**
+     * Per-observer tracking of which {@code Vanishpp_Vanished} team member names that
+     * observer's client has actually been sent (via CREATE/ADD). See
+     * {@link VanishTeamPacketPolicy} for why this exists instead of trusting the
+     * observer's current permission at REMOVE time. Cleared on quit from
+     * {@link #clearObserverKnowledge(UUID)}, called by {@code PlayerListener#onQuit}.
+     */
+    private final Map<UUID, Set<String>> knownVanishTeamMembers = new ConcurrentHashMap<>();
+
     public ProtocolLibManager(Vanishpp plugin) {
         this.plugin = plugin;
+    }
+
+    /** Drops a quitting observer's tracked team knowledge so the map doesn't grow unbounded. */
+    public void clearObserverKnowledge(UUID observerId) {
+        knownVanishTeamMembers.remove(observerId);
     }
 
     public void load() {
@@ -32,7 +47,14 @@ public class ProtocolLibManager {
         plugin.getLogger().info("Hooked into ProtocolLib.");
         registerSilentChestListeners();
 
+        // Each listener below is registered in its own try-catch: a single unsupported
+        // PacketType on a given server/ProtocolLib version must not silently take down
+        // every other listener registered after it (they used to share one unguarded
+        // method body, so one bad registration disabled all remaining protections,
+        // including the crash-preventing team-scrub listener below).
+
         // 1. Tab Scrubbing (Hiding vanished players from non-staff)
+        try {
         protocolManager.addPacketListener(
                 new PacketAdapter(plugin, ListenerPriority.HIGHEST, PacketType.Play.Server.TAB_COMPLETE) {
                     @Override
@@ -66,8 +88,12 @@ public class ProtocolLibManager {
                         }
                     }
                 });
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to register tab-complete scrubbing listener: " + e.getMessage());
+        }
 
         // 2. Comprehensive Reveal/Block for Metadata, Updates, and Movement
+        try {
         protocolManager.addPacketListener(new PacketAdapter(plugin, ListenerPriority.HIGHEST,
                 PacketType.Play.Server.ENTITY_METADATA,
                 PacketType.Play.Server.ENTITY_EQUIPMENT,
@@ -185,11 +211,65 @@ public class ProtocolLibManager {
                 }
             }
         });
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to register entity reveal/block listener: " + e.getMessage());
+        }
 
-        // 3. Tab List & Info Filtering logic removed because native hidePlayer()
-        // handles it correctly.
+        // 3. PLAYER_INFO backstop: hidePlayer() only sends a one-shot PLAYER_INFO_REMOVE at
+        // the moment visibility changes - it does not stop another plugin (a TAB plugin,
+        // a third-party team plugin re-syncing its own tab entries, even a routine gamemode
+        // change broadcast) from causing a later PLAYER_INFO packet that re-includes the
+        // vanished player. This listener strips vanished-player entries out of every such
+        // packet before it reaches a non-seer, regardless of what caused it to be sent.
+        // (ProtocolLib 5.3.0's PLAYER_INFO covers both the legacy add/update packet and the
+        // modern 1.19.3+ ClientboundPlayerInfoUpdatePacket under one name - PLAYER_INFO_REMOVE
+        // is the separate, already-correctly-handled removal packet and is left alone here.)
+        try {
+        if (PacketType.Play.Server.PLAYER_INFO.isSupported()) {
+        protocolManager.addPacketListener(
+                new PacketAdapter(plugin, ListenerPriority.HIGHEST, PacketType.Play.Server.PLAYER_INFO) {
+                    @Override
+                    public void onPacketSending(PacketEvent event) {
+                        if (event.isCancelled())
+                            return;
+                        Player observer = event.getPlayer();
+                        if (ProtocolLibManager.this.plugin.getPermissionManager().hasPermission(observer,
+                                "vanishpp.see"))
+                            return;
+
+                        try {
+                            PacketContainer packet = event.getPacket();
+                            List<PlayerInfoData> entries = packet.getPlayerInfoDataLists().read(0);
+                            if (entries == null || entries.isEmpty())
+                                return;
+
+                            VanishPlayerInfoPolicy.FilterResult<PlayerInfoData> result = VanishPlayerInfoPolicy.filter(
+                                    entries, PlayerInfoData::getProfileId,
+                                    ProtocolLibManager.this.plugin::isVanished);
+
+                            if (!result.changed())
+                                return;
+                            if (result.cancel()) {
+                                event.setCancelled(true);
+                            } else {
+                                packet.getPlayerInfoDataLists().write(0, result.kept());
+                            }
+                        } catch (Exception e) {
+                            // Fail closed, same reasoning as the SCOREBOARD_TEAM scrub above -
+                            // an unrecognized packet shape must not be forwarded unfiltered.
+                            event.setCancelled(true);
+                            ProtocolLibManager.this.plugin.getLogger().warning(
+                                    "Failed to scrub PLAYER_INFO packet, cancelling for safety: " + e.getMessage());
+                        }
+                    }
+                });
+        }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to register PLAYER_INFO scrubbing listener: " + e.getMessage());
+        }
 
         // 4. Ghost-Proof Spawning (Hiding SPAWN_ENTITY — NAMED_ENTITY_SPAWN removed in 1.21)
+        try {
         protocolManager.addPacketListener(new PacketAdapter(plugin, ListenerPriority.HIGHEST,
                 PacketType.Play.Server.SPAWN_ENTITY) {
             @Override
@@ -212,64 +292,124 @@ public class ProtocolLibManager {
                 }
             }
         });
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to register ghost-proof spawning listener: " + e.getMessage());
+        }
 
         // 5. Final Stealth Fix: Scrub SCOREBOARD_TEAM packets
+        //
+        // Regression test: VanishTeamPacketPolicyTest. This fix originally scrubbed ADD/REMOVE
+        // purely by the observer's CURRENT vanishpp.see permission, which crashed clients
+        // ("Player is either on another team or not on any team") whenever an observer was
+        // granted vanishpp.see live (e.g. via LuckPerms, no relog) between a vanish and the
+        // matching unvanish — their client never received the ADD while non-staff, but the old
+        // logic let the REMOVE through unfiltered once they became staff. See
+        // VanishTeamPacketPolicy for the per-observer knowledge tracking that replaced it.
+        try {
         protocolManager.addPacketListener(
                 new PacketAdapter(plugin, ListenerPriority.HIGHEST, PacketType.Play.Server.SCOREBOARD_TEAM) {
                     @Override
                     public void onPacketSending(PacketEvent event) {
                         if (event.isCancelled())
                             return;
-                        Player observer = event.getPlayer();
-                        if (ProtocolLibManager.this.plugin.getPermissionManager().hasPermission(observer,
-                                "vanishpp.see")) {
-                            // Staff see prefixes (handled by the other listener below)
-                            return;
-                        }
 
                         try {
                             PacketContainer packet = event.getPacket();
                             int action = packet.getIntegers().read(0);
+                            String teamName = packet.getStrings().read(0);
 
-                            // Actions: 0 (Create), 3 (Add Members), 4 (Remove Members)
-                            if (action == 0 || action == 3 || action == 4) {
-                                // Non-staff clients never receive ADD packets for the vanish team
-                                // (scrubbed below), so they must never receive REMOVE packets for
-                                // it either — the client crashes with "Player is not on any team"
-                                // if told to remove an entry it never knew it had.
-                                String teamName = packet.getStrings().read(0);
-                                if ("Vanishpp_Vanished".equals(teamName) && (action == 3 || action == 4)) {
-                                    event.setCancelled(true);
+                            if (!"Vanishpp_Vanished".equals(teamName)) {
+                                // Not our team — leave any other plugin/vanilla team packets alone
+                                // aside from the pre-existing generic per-name vanish scrub below.
+                                if (ProtocolLibManager.this.plugin.getPermissionManager()
+                                        .hasPermission(event.getPlayer(), "vanishpp.see")) {
                                     return;
                                 }
+                                if (action == 0 || action == 3 || action == 4) {
+                                    scrubGenericTeamPacket(packet, action, event);
+                                }
+                                return;
+                            }
 
-                                Collection<String> players = packet.getSpecificModifier(Collection.class).read(0);
-                                if (players != null) {
-                                    List<String> scrubbed = new ArrayList<>();
-                                    boolean changed = false;
-                                    for (String name : players) {
+                            if (action != VanishTeamPacketPolicy.ACTION_CREATE
+                                    && action != VanishTeamPacketPolicy.ACTION_ADD_PLAYERS
+                                    && action != VanishTeamPacketPolicy.ACTION_REMOVE_PLAYERS) {
+                                return;
+                            }
+
+                            Player observer = event.getPlayer();
+                            Collection<String> names = packet.getSpecificModifier(Collection.class).read(0);
+                            if (names == null || names.isEmpty())
+                                return;
+
+                            boolean isStaff = ProtocolLibManager.this.plugin.getPermissionManager()
+                                    .hasPermission(observer, "vanishpp.see");
+                            Set<String> known = ProtocolLibManager.this.knownVanishTeamMembers
+                                    .computeIfAbsent(observer.getUniqueId(), k -> ConcurrentHashMap.newKeySet());
+
+                            VanishTeamPacketPolicy.Decision decision = VanishTeamPacketPolicy.decide(
+                                    action, isStaff, names, known,
+                                    name -> {
                                         Player p = Bukkit.getPlayer(name);
-                                        if (p != null && ProtocolLibManager.this.plugin.isVanished(p.getUniqueId())) {
-                                            changed = true;
-                                        } else {
-                                            scrubbed.add(name);
-                                        }
-                                    }
-                                    if (changed) {
-                                        if (scrubbed.isEmpty() && action != 0) {
-                                            event.setCancelled(true);
-                                        } else {
-                                            packet.getSpecificModifier(Collection.class).write(0, scrubbed);
-                                        }
-                                    }
+                                        return p != null && ProtocolLibManager.this.plugin.isVanished(p.getUniqueId());
+                                    });
+
+                            if (decision.cancel()) {
+                                event.setCancelled(true);
+                            } else if (decision.names().size() != names.size()) {
+                                packet.getSpecificModifier(Collection.class).write(0, decision.names());
+                            }
+                        } catch (Exception e) {
+                            // Fail closed: if we can't verify a vanished name isn't in this
+                            // packet, don't forward it unscrubbed. Losing a legitimate team UI
+                            // update is an acceptable cost; leaking a vanished player's name
+                            // (e.g. to a third-party team plugin's own packets, handled by
+                            // scrubGenericTeamPacket below) is not.
+                            event.setCancelled(true);
+                            ProtocolLibManager.this.plugin.getLogger().warning(
+                                    "Failed to scrub SCOREBOARD_TEAM packet, cancelling for safety: " + e.getMessage());
+                        }
+                    }
+
+                    /** Pre-existing generic scrub for any OTHER (non-vanish) team's member list. */
+                    private void scrubGenericTeamPacket(PacketContainer packet, int action, PacketEvent event) {
+                        try {
+                            Collection<String> players = packet.getSpecificModifier(Collection.class).read(0);
+                            if (players == null) return;
+                            List<String> scrubbed = new ArrayList<>();
+                            boolean changed = false;
+                            for (String name : players) {
+                                Player p = Bukkit.getPlayer(name);
+                                if (p != null && ProtocolLibManager.this.plugin.isVanished(p.getUniqueId())) {
+                                    changed = true;
+                                } else {
+                                    scrubbed.add(name);
                                 }
                             }
-                        } catch (Exception ignored) {
+                            if (changed) {
+                                if (scrubbed.isEmpty() && action != 0) {
+                                    event.setCancelled(true);
+                                } else {
+                                    packet.getSpecificModifier(Collection.class).write(0, scrubbed);
+                                }
+                            }
+                        } catch (Exception e) {
+                            // Fail closed - same reasoning as the outer catch above. This is
+                            // the path that actually applies to third-party team plugins
+                            // (e.g. BetterTeams): a packet shape this code doesn't recognize
+                            // must not be forwarded unscrubbed just because reading it failed.
+                            event.setCancelled(true);
+                            ProtocolLibManager.this.plugin.getLogger().warning(
+                                    "Failed to scrub third-party SCOREBOARD_TEAM packet, cancelling for safety: " + e.getMessage());
                         }
                     }
                 });
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to register scoreboard team scrubbing listener: " + e.getMessage());
+        }
 
         // 6. Server List Ping
+        try {
         protocolManager.addPacketListener(
                 new PacketAdapter(plugin, ListenerPriority.HIGHEST, PacketType.Status.Server.SERVER_INFO) {
                     @Override
@@ -298,6 +438,9 @@ public class ProtocolLibManager {
                         }
                     }
                 });
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to register server-list-ping listener: " + e.getMessage());
+        }
 
         // Native vanishTeam.prefix() handles the nametag prefix for staff already.
     }
@@ -305,6 +448,7 @@ public class ProtocolLibManager {
     private void registerSilentChestListeners() {
         // Suppress BLOCK_ACTION (chest open/close animation, shulker open/close animation)
         // for non-seers when the block is in the silently-opened set
+        try {
         protocolManager.addPacketListener(new PacketAdapter(plugin, ListenerPriority.HIGHEST,
                 PacketType.Play.Server.BLOCK_ACTION) {
             @Override
@@ -325,11 +469,15 @@ public class ProtocolLibManager {
                 } catch (Exception ignored) {}
             }
         });
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to register silent-chest animation listener: " + e.getMessage());
+        }
 
         // Suppress sound effects originating at silently-opened block positions.
         // Vanilla block sounds use NAMED_SOUND_EFFECT; custom sounds use CUSTOM_SOUND_EFFECT.
         // CUSTOM_SOUND_EFFECT is absent on some MC versions — only register it when supported.
         // All sound packets in 1.21+ store coordinates as fixed-point ints (actual_coord * 8).
+        try {
         List<PacketType> soundPacketTypes = new java.util.ArrayList<>();
         soundPacketTypes.add(PacketType.Play.Server.NAMED_SOUND_EFFECT);
         if (PacketType.Play.Server.CUSTOM_SOUND_EFFECT.isSupported())
@@ -364,6 +512,9 @@ public class ProtocolLibManager {
             }
         };
         protocolManager.addPacketListener(soundListener);
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to register silent-chest sound listener: " + e.getMessage());
+        }
     }
 
     /**

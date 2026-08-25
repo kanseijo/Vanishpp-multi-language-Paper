@@ -2,7 +2,7 @@ name: Discord Reports Notify
 
 # Replaces the old raw repo webhook -> Discord `/github` integration, which had no way to
 # filter by actor. This workflow covers the same event set that webhook was subscribed to
-# (issues, issue_comment, pull_request, pull_request_review, pull_request_review_comment,
+# (issues, issue_comment, pull_request_target, pull_request_review, pull_request_review_comment,
 # release) and additionally only posts when the action was performed by someone OTHER than
 # the repo owner, so the reports channel only pings for things the owner didn't already know
 # about firsthand.
@@ -15,7 +15,12 @@ name: Discord Reports Notify
 on:
   issues:
   issue_comment:
-  pull_request:
+  # pull_request_target (not pull_request): PRs from forks never get repo secrets under
+  # pull_request, so DISCORD_WEBHOOK_URL came through empty and every notify for a fork PR
+  # failed. pull_request_target runs in the base repo's context instead, so secrets are
+  # available - safe here specifically because this workflow never checks out or runs any
+  # of the PR's own code, only reads event metadata from $GITHUB_EVENT_PATH.
+  pull_request_target:
   pull_request_review:
   pull_request_review_comment:
   release:
@@ -47,6 +52,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          action=""
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             sender="$TEST_SENDER"
             title="[TEST] $TEST_MESSAGE (simulated sender: $TEST_SENDER)"
@@ -54,38 +60,58 @@ jobs:
             description="Manually triggered test run - does not reflect a real repo event."
           else
             sender="$(jq -r '.sender.login' "$GITHUB_EVENT_PATH")"
+            action="$(jq -r '.action // empty' "$GITHUB_EVENT_PATH")"
             case "$EVENT_NAME" in
               issues)
-                title="Issue $(jq -r '.action' "$GITHUB_EVENT_PATH"): $(jq -r '.issue.title' "$GITHUB_EVENT_PATH") (#$(jq -r '.issue.number' "$GITHUB_EVENT_PATH"))"
+                title="Issue $action: $(jq -r '.issue.title' "$GITHUB_EVENT_PATH") (#$(jq -r '.issue.number' "$GITHUB_EVENT_PATH"))"
                 url="$(jq -r '.issue.html_url' "$GITHUB_EVENT_PATH")"
+                description="$(jq -r '(.issue.body // "") | if length > 3500 then .[0:3500] + "..." else . end' "$GITHUB_EVENT_PATH")"
                 ;;
               issue_comment)
                 title="Comment on #$(jq -r '.issue.number' "$GITHUB_EVENT_PATH") $(jq -r '.issue.title' "$GITHUB_EVENT_PATH")"
                 url="$(jq -r '.comment.html_url' "$GITHUB_EVENT_PATH")"
+                description="$(jq -r '(.comment.body // "") | if length > 3500 then .[0:3500] + "..." else . end' "$GITHUB_EVENT_PATH")"
                 ;;
-              pull_request)
-                title="PR $(jq -r '.action' "$GITHUB_EVENT_PATH"): $(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH") (#$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH"))"
+              pull_request_target)
+                title="Pull request $action: $(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH") (#$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH"))"
                 url="$(jq -r '.pull_request.html_url' "$GITHUB_EVENT_PATH")"
+                description="$(jq -r '(.pull_request.body // "") | if length > 3500 then .[0:3500] + "..." else . end' "$GITHUB_EVENT_PATH")"
+                if [ "$action" = "closed" ] && [ "$(jq -r '.pull_request.merged' "$GITHUB_EVENT_PATH")" = "true" ]; then
+                  action="merged"
+                fi
                 ;;
               pull_request_review)
-                title="Review $(jq -r '.review.state' "$GITHUB_EVENT_PATH") on PR #$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
+                action="$(jq -r '.review.state' "$GITHUB_EVENT_PATH")"
+                title="Review $action on PR #$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
                 url="$(jq -r '.review.html_url' "$GITHUB_EVENT_PATH")"
+                description="$(jq -r '(.review.body // "") | if length > 3500 then .[0:3500] + "..." else . end' "$GITHUB_EVENT_PATH")"
                 ;;
               pull_request_review_comment)
                 title="Review comment on PR #$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
                 url="$(jq -r '.comment.html_url' "$GITHUB_EVENT_PATH")"
+                description="$(jq -r '(.comment.body // "") | if length > 3500 then .[0:3500] + "..." else . end' "$GITHUB_EVENT_PATH")"
                 ;;
               release)
-                title="Release $(jq -r '.action' "$GITHUB_EVENT_PATH"): $(jq -r '.release.name // .release.tag_name' "$GITHUB_EVENT_PATH")"
+                title="Release $action: $(jq -r '.release.name // .release.tag_name' "$GITHUB_EVENT_PATH")"
                 url="$(jq -r '.release.html_url' "$GITHUB_EVENT_PATH")"
+                description=""
                 ;;
               *)
                 title="$EVENT_NAME event"
                 url="https://github.com/$REPO"
+                description=""
                 ;;
             esac
-            description="by $sender on $REPO"
           fi
+
+          # Green for opened/reopened/approved, purple for a merged PR, red for
+          # closed/rejected/deleted, Discord's own blurple for everything else.
+          case "$action" in
+            open* | approved) color=3066993 ;;
+            merged) color=7290049 ;;
+            clos* | rejected | changes_requested | delete*) color=15158332 ;;
+            *) color=5793266 ;;
+          esac
 
           # Only notify when the action was performed by someone other than the repo owner.
           # sender.login (the payload's authoritative "who actually did this" field) is used
@@ -97,12 +123,23 @@ jobs:
             should_notify="true"
           fi
 
+          # description can be multi-line (a real PR/issue body) - GITHUB_OUTPUT's plain
+          # key=value form breaks on embedded newlines, so it needs the heredoc delimiter
+          # form. The other fields are always single-line but cost nothing to write the
+          # same way for consistency.
           {
             echo "should_notify=$should_notify"
             echo "sender=$sender"
-            echo "title=$title"
-            echo "url=$url"
-            echo "description=$description"
+            echo "color=$color"
+            echo "title<<GHACTIONS_EOF_TITLE"
+            echo "$title"
+            echo "GHACTIONS_EOF_TITLE"
+            echo "url<<GHACTIONS_EOF_URL"
+            echo "$url"
+            echo "GHACTIONS_EOF_URL"
+            echo "description<<GHACTIONS_EOF_DESCRIPTION"
+            echo "$description"
+            echo "GHACTIONS_EOF_DESCRIPTION"
           } >> "$GITHUB_OUTPUT"
 
           echo "Computed: sender=$sender should_notify=$should_notify title=$title"
@@ -114,11 +151,44 @@ jobs:
           TITLE: ${{ steps.context.outputs.title }}
           URL: ${{ steps.context.outputs.url }}
           DESCRIPTION: ${{ steps.context.outputs.description }}
+          COLOR: ${{ steps.context.outputs.color }}
+          SENDER: ${{ steps.context.outputs.sender }}
         run: |
           set -euo pipefail
+          timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           payload="$(jq -n \
             --arg title "$TITLE" \
             --arg url "$URL" \
             --arg description "$DESCRIPTION" \
-            '{embeds: [{title: $title, url: $url, description: $description}]}')"
-          curl -sS -X POST -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
+            --argjson color "$COLOR" \
+            --arg webhookName "GitHub" \
+            --arg webhookIcon "https://github.githubassets.com/favicons/favicon.png" \
+            --arg authorName "$SENDER" \
+            --arg authorUrl "https://github.com/$SENDER" \
+            --arg authorIcon "https://github.com/$SENDER.png" \
+            --arg timestamp "$timestamp" \
+            '{
+              username: $webhookName,
+              avatar_url: $webhookIcon,
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $description,
+                color: $color,
+                author: {name: $authorName, url: $authorUrl, icon_url: $authorIcon},
+                timestamp: $timestamp
+              }]
+            }')"
+
+          # curl alone doesn't fail the step on an HTTP error response (only on a transport-
+          # level failure), so a rejected/misconfigured webhook silently reported "success"
+          # here forever - print the actual response and fail loudly on anything but 2xx.
+          http_code="$(curl -sS -o response.txt -w '%{http_code}' \
+            -X POST -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL")"
+          echo "Discord webhook responded with HTTP $http_code:"
+          cat response.txt
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "::error::Discord webhook rejected the payload (HTTP $http_code) - check DISCORD_WEBHOOK_URL"
+            exit 1
+          fi

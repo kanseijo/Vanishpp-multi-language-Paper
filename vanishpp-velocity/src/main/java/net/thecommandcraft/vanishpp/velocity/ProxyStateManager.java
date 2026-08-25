@@ -2,6 +2,7 @@ package net.thecommandcraft.vanishpp.velocity;
 
 import net.thecommandcraft.vanishpp.common.state.NetworkVanishState;
 import net.thecommandcraft.vanishpp.velocity.config.VelocityConfigManager;
+import net.thecommandcraft.vanishpp.velocity.hooks.LuckPermsHook;
 import net.thecommandcraft.vanishpp.velocity.storage.ProxySqlStorage;
 
 import java.util.*;
@@ -17,6 +18,8 @@ public class ProxyStateManager {
     private final VanishppVelocity plugin;
     private final VelocityConfigManager configManager;
     private ProxySqlStorage sqlStorage;
+    /** Null when LuckPerms isn't present on the proxy (optional dependency). */
+    private LuckPermsHook luckPermsHook;
 
     /** UUID → full network state for all currently vanished players. */
     private final ConcurrentHashMap<UUID, NetworkVanishState> vanishedPlayers = new ConcurrentHashMap<>();
@@ -51,6 +54,11 @@ public class ProxyStateManager {
         if (sqlStorage != null) sqlStorage.shutdown();
     }
 
+    /** Set once LuckPerms is confirmed present (see VanishppVelocity#onProxyInitialize). */
+    public void setLuckPermsHook(LuckPermsHook hook) {
+        this.luckPermsHook = hook;
+    }
+
     // ── Vanish state ─────────────────────────────────────────────────────────
 
     public void setVanished(UUID uuid, String playerName, String serverName, boolean vanished, int vanishLevel) {
@@ -62,6 +70,7 @@ public class ProxyStateManager {
         if (sqlStorage != null) {
             plugin.getProxy().getScheduler().buildTask(plugin, () -> sqlStorage.setVanished(uuid, vanished)).schedule();
         }
+        if (luckPermsHook != null) luckPermsHook.setVanished(uuid);
     }
 
     public boolean isVanished(UUID uuid) {

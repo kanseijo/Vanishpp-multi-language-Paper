@@ -37,18 +37,22 @@ import org.bukkit.util.Vector;
 import org.bukkit.event.Event;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PlayerListener implements Listener {
 
     private final Vanishpp plugin;
     private final ConfigManager config;
     private final RuleManager rules;
-    private final Map<UUID, GameMode> silentChestViewers = new HashMap<>();
-    private final Map<UUID, List<String>> silentChestBlockKeys = new HashMap<>(); // block key(s) per viewer for cleanup
-    private final Map<UUID, Inventory> silentChestRealInventories = new HashMap<>(); // snapshot → real for sync-back
-    private final Map<UUID, Map<String, Long>> ruleNotificationCooldowns = new HashMap<>();
-    private final Set<UUID> hasSeenDisableTip = new HashSet<>();
-    private final Map<UUID, Long> lastSneakTime = new HashMap<>();
+    private final Map<UUID, GameMode> silentChestViewers = new ConcurrentHashMap<>();
+    private final Map<UUID, String> silentChestBlockKeys = new ConcurrentHashMap<>();
+    private final Map<UUID, Map<String, Long>> ruleNotificationCooldowns = new ConcurrentHashMap<>();
+    private final Set<UUID> hasSeenDisableTip = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Long> lastSneakTime = new ConcurrentHashMap<>();
+
+    // Pre-fetched DB vanish state: populated on AsyncPlayerPreLoginEvent so
+    // PlayerJoinEvent can apply vanish instantly without an async round-trip.
+    private final Map<UUID, Boolean> preFetchedVanishState = new ConcurrentHashMap<>();
 
     public PlayerListener(Vanishpp plugin) {
         this.plugin = plugin;
@@ -56,9 +60,31 @@ public class PlayerListener implements Listener {
         this.rules = plugin.getRuleManager();
     }
 
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onAsyncPreLogin(AsyncPlayerPreLoginEvent event) {
+        UUID uuid = event.getUniqueId();
+        try {
+            boolean dbVanished = plugin.getStorageProvider().isVanished(uuid);
+            preFetchedVanishState.put(uuid, dbVanished);
+        } catch (Exception ignored) {
+            // If DB read fails, fall back to existing in-memory state at join
+        }
+    }
+
     @EventHandler(priority = EventPriority.LOWEST)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        if (plugin.hasProtocolLib()){
+            plugin.getProtocolLibManager().cachePlayer(player);
+        }
+        final UUID joinUuid = player.getUniqueId();
+
+        // Apply pre-fetched DB vanish state immediately (no async round-trip needed).
+        // preFetchedVanishState is populated by AsyncPlayerPreLoginEvent before this fires.
+        Boolean prefetched = preFetchedVanishState.remove(joinUuid);
+        if (prefetched != null) {
+            plugin.reconcileVanishState(player, prefetched);
+        }
 
         // Immediate Vanish Logic
         if (plugin.isVanished(player)) {
@@ -106,6 +132,18 @@ public class PlayerListener implements Listener {
             }
         }
 
+        // If AsyncPlayerPreLoginEvent didn't pre-fetch (e.g. storage not ready yet),
+        // fall back to an async reconciliation to avoid missing cross-server state.
+        if (prefetched == null) {
+            plugin.getVanishScheduler().runAsync(() -> {
+                boolean dbVanished = plugin.getStorageProvider().isVanished(joinUuid);
+                plugin.getVanishScheduler().runGlobal(() -> {
+                    if (!player.isOnline()) return;
+                    plugin.reconcileVanishState(player, dbVanished);
+                });
+            });
+        }
+
         // DELAYED NOTIFICATIONS (250ms / 5 Ticks)
         plugin.getVanishScheduler().runLaterGlobal(() -> {
             if (!player.isOnline())
@@ -124,6 +162,12 @@ public class PlayerListener implements Listener {
                 plugin.getMessageManager().sendMessage(player, lm.getMessage("warnings.line"));
                 plugin.getMessageManager().sendMessage(player, lm.getMessage("warnings.sub"));
                 plugin.getMessageManager().sendMessage(player, lm.getMessage("warnings.box-bottom"));
+                player.sendMessage(
+                        Component.text("  ").append(
+                        Component.text("[ Download ProtocolLib ]", NamedTextColor.AQUA, TextDecoration.BOLD)
+                                .clickEvent(ClickEvent.openUrl("https://github.com/dmulloy2/ProtocolLib/releases/"))
+                                .hoverEvent(HoverEvent.showText(Component.text(
+                                        "Opens the latest ProtocolLib release on GitHub", NamedTextColor.GRAY)))));
 
                 Title title = Title.title(
                         plugin.getMessageManager().parse(lm.getMessage("warnings.protocollib-missing-title"), player),
@@ -213,11 +257,14 @@ public class PlayerListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
+        if (plugin.hasProtocolLib()){
+            plugin.getProtocolLibManager().uncachePlayer(player);
+        }
         if (plugin.isVanished(player)) {
             if (config.hideRealQuit)
                 event.quitMessage(null);
-            List<String> blockKeys = silentChestBlockKeys.remove(uuid);
-            if (blockKeys != null) blockKeys.forEach(plugin.silentlyOpenedBlocks::remove);
+            String blockKey = silentChestBlockKeys.remove(uuid);
+            if (blockKey != null) plugin.silentlyOpenedBlocks.remove(blockKey);
             silentChestViewers.remove(uuid);
             plugin.pendingChatMessages.remove(uuid);
             // Notify staff that a vanished player silently left
@@ -233,6 +280,7 @@ public class PlayerListener implements Listener {
         ruleNotificationCooldowns.remove(uuid);
         hasSeenDisableTip.remove(uuid);
         lastSneakTime.remove(uuid);
+        preFetchedVanishState.remove(uuid);
         plugin.cleanupPlayerCache(uuid);
     }
 
@@ -414,12 +462,10 @@ public class PlayerListener implements Listener {
             // Only cancel targeting if mob_targeting rule is OFF (false = mobs ignore vanished player)
             if (!rules.getRule(p, RuleManager.MOB_TARGETING)) {
                 event.setCancelled(true);
-                event.setTarget(null);
-                if (event.getEntity() instanceof org.bukkit.entity.Mob mob) {
-                    mob.setTarget(null);
-                    // Also stop pathfinding to prevent baby mobs from chasing after target is cleared
-                    mob.getPathfinder().stopPathfinding();
-                }
+                // Do NOT call mob.setTarget(null) or stopPathfinding() here — the event is cancelled
+                // so no path has started. Explicit target/pathfinding manipulation triggers a second
+                // EntityTargetEvent (FORGOT) and puts the mob's NearestAttackableTargetGoal into a
+                // cooldown, causing nearby non-vanished players to not be attacked.
             }
         }
     }
@@ -581,11 +627,17 @@ public class PlayerListener implements Listener {
         if (now - last > 400) return; // not a double-tap
 
         if (p.getGameMode() != GameMode.SPECTATOR) {
+            p.setMetadata("vanishpp_pre_spectator_gamemode", new org.bukkit.metadata.FixedMetadataValue(plugin, p.getGameMode()));
             p.setGameMode(GameMode.SPECTATOR);
             plugin.triggerActionBarWarning(p, plugin.getMessageManager().parse(
                     config.getLanguageManager().getMessage("spectator.entered"), p), 3000);
         } else {
-            GameMode prev = plugin.getPreVanishGamemodePublic(p);
+            GameMode prev = GameMode.SURVIVAL;
+            if (p.hasMetadata("vanishpp_pre_spectator_gamemode")) {
+                Object val = p.getMetadata("vanishpp_pre_spectator_gamemode").get(0).value();
+                if (val instanceof GameMode gm) prev = gm;
+                p.removeMetadata("vanishpp_pre_spectator_gamemode", plugin);
+            }
             p.setGameMode(prev);
             plugin.triggerActionBarWarning(p, plugin.getMessageManager().parse(
                     config.getLanguageManager().getMessage("spectator.exited")
@@ -611,40 +663,27 @@ public class PlayerListener implements Listener {
         event.setCancelled(true);
 
         if (plugin.hasProtocolLib()) {
-            // Open a snapshot inventory — avoids triggering Container.startOpen()
-            // which is the source of the barrel/chest lid animation and sound.
+            // Register the block key BEFORE opening so ProtocolLib suppression is already
+            // active when Container.startOpen() fires its BLOCK_ACTION and sound packets.
             String blockKey = block.getX() + "," + block.getY() + "," + block.getZ();
+            plugin.silentlyOpenedBlocks.add(blockKey);
+            silentChestViewers.put(player.getUniqueId(), player.getGameMode());
+            silentChestBlockKeys.put(player.getUniqueId(), blockKey);
+
             if (type == Material.ENDER_CHEST) {
-                // Ender chest has no shared animation state, open directly
-                silentChestViewers.put(player.getUniqueId(), player.getGameMode());
+                // Each player has their own ender chest inventory — open it directly.
                 player.openInventory(player.getEnderChest());
             } else if (block.getState() instanceof Container c) {
-                Inventory realInv = c.getInventory();
-                Component title = c.customName() != null ? c.customName()
-                        : Component.translatable(block.getType().translationKey());
-                Inventory snapshot = Bukkit.createInventory(null, realInv.getSize(), title);
-                snapshot.setContents(realInv.getContents());
-                silentChestViewers.put(player.getUniqueId(), player.getGameMode());
-                // Safety net: also register the block key(s) with the ProtocolLib packet
-                // suppressor (registerSilentChestListeners) in case the snapshot trick alone
-                // doesn't stop the server from emitting a BLOCK_ACTION/sound packet for the
-                // real block (e.g. observed leaking for double chests). Both halves of a
-                // double chest are separate block entities and must both be registered.
-                Set<String> blockKeys = new LinkedHashSet<>();
-                blockKeys.add(blockKey);
-                if (realInv.getHolder() instanceof org.bukkit.block.DoubleChest doubleChest) {
-                    for (org.bukkit.inventory.InventoryHolder side : new org.bukkit.inventory.InventoryHolder[]{
-                            doubleChest.getLeftSide(), doubleChest.getRightSide()}) {
-                        if (side instanceof org.bukkit.block.Chest chestState) {
-                            var loc = chestState.getLocation();
-                            blockKeys.add(loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ());
-                        }
-                    }
-                }
-                blockKeys.forEach(plugin.silentlyOpenedBlocks::add);
-                silentChestBlockKeys.put(player.getUniqueId(), new ArrayList<>(blockKeys));
-                silentChestRealInventories.put(player.getUniqueId(), realInv);
-                player.openInventory(snapshot);
+                // Open the real container inventory directly.
+                // ProtocolLib suppresses the animation/sound for non-seers via silentlyOpenedBlocks.
+                // This is vanilla-correct: no snapshot, no sync-back race, hoppers/plugins see
+                // live changes immediately as they happen.
+                player.openInventory(c.getInventory());
+            } else {
+                // Not a recognised container state — roll back registration
+                plugin.silentlyOpenedBlocks.remove(blockKey);
+                silentChestViewers.remove(player.getUniqueId());
+                silentChestBlockKeys.remove(player.getUniqueId());
             }
         } else {
             // No ProtocolLib: use spectator mode fallback, warn player
@@ -662,7 +701,7 @@ public class PlayerListener implements Listener {
                         .text("⚠ Install ", NamedTextColor.YELLOW)
                         .append(net.kyori.adventure.text.Component.text("[ProtocolLib]", NamedTextColor.AQUA,
                                 TextDecoration.UNDERLINED)
-                                .clickEvent(ClickEvent.openUrl("https://www.spigotmc.org/resources/protocollib.1997/"))
+                                .clickEvent(ClickEvent.openUrl("https://github.com/dmulloy2/ProtocolLib/releases/"))
                                 .hoverEvent(HoverEvent.showText(net.kyori.adventure.text.Component.text(
                                         "Click to open SpigotMC download page", NamedTextColor.GRAY))))
                         .append(net.kyori.adventure.text.Component.text(" to move items in silent chests.", NamedTextColor.YELLOW));
@@ -681,16 +720,16 @@ public class PlayerListener implements Listener {
 
         Player p = (Player) event.getPlayer();
         GameMode gm = silentChestViewers.remove(uuid);
-        List<String> blockKeys = silentChestBlockKeys.remove(uuid);
+        String blockKey = silentChestBlockKeys.remove(uuid);
 
-        // Sync snapshot contents back to the real container
-        Inventory realInv = silentChestRealInventories.remove(uuid);
-        if (realInv != null) {
-            realInv.setContents(event.getInventory().getContents());
-        }
+        // No sync-back needed: with ProtocolLib we open the real inventory directly,
+        // so all changes are already live. With the spectator fallback we also open
+        // the real inventory, so no copy is required in either path.
 
         if (p.isOnline()) {
-            // Restore game mode only if we switched to spectator (non-ProtocolLib fallback path)
+            // Restore game mode only if we switched to spectator (non-ProtocolLib fallback path).
+            // Fly is restored unconditionally when the stored mode requires it — do NOT gate
+            // on isVanished() here because the player may have unvanished while the chest was open.
             if (gm != GameMode.SPECTATOR && p.getGameMode() == GameMode.SPECTATOR) {
                 p.setGameMode(gm);
                 if (config.enableFly && gm != GameMode.CREATIVE && plugin.isVanished(p)) {
@@ -702,9 +741,9 @@ public class PlayerListener implements Listener {
 
         // Delay removal so ProtocolLib still suppresses close animation + sound packets
         // that fire AFTER InventoryCloseEvent
-        if (blockKeys != null) {
-            final List<String> keys = blockKeys;
-            plugin.getVanishScheduler().runLaterGlobal(() -> keys.forEach(plugin.silentlyOpenedBlocks::remove), 3L);
+        if (blockKey != null) {
+            final String key = blockKey;
+            plugin.getVanishScheduler().runLaterGlobal(() -> plugin.silentlyOpenedBlocks.remove(key), 3L);
         }
     }
 
@@ -785,6 +824,108 @@ public class PlayerListener implements Listener {
         } else {
             p.sendMessage(unvanish);
         }
+    }
+
+    // ── Anti-Combat Vanish Tracking ───────────────────────────────────────────
+
+    /** Track PvP and PvE combat timestamps for the anti-combat-vanish feature. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onCombatDamage(EntityDamageByEntityEvent event) {
+        if (!config.antiCombatVanishEnabled) return;
+        long now = System.currentTimeMillis();
+
+        // Damager tracking (both PvP and PvE)
+        if (event.getDamager() instanceof Player damager) {
+            if (event.getEntity() instanceof Player) {
+                plugin.lastPvpCombat.put(damager.getUniqueId(), now);
+            } else {
+                plugin.lastPveCombat.put(damager.getUniqueId(), now);
+            }
+        }
+
+        // Victim tracking (PvP only for victim)
+        if (event.getEntity() instanceof Player victim) {
+            if (event.getDamager() instanceof Player || event.getDamager() instanceof org.bukkit.entity.Projectile) {
+                plugin.lastPvpCombat.put(victim.getUniqueId(), now);
+            } else {
+                plugin.lastPveCombat.put(victim.getUniqueId(), now);
+            }
+        }
+    }
+
+    // ── AFK Detection + Auto-Vanish-on-Join ──────────────────────────────────
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onMove(PlayerMoveEvent event) {
+        // Only track actual block-boundary movement (reduces event overhead)
+        if (event.getFrom().getBlockX() == event.getTo().getBlockX()
+                && event.getFrom().getBlockY() == event.getTo().getBlockY()
+                && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) return;
+
+        plugin.onPlayerMove(event.getPlayer());
+    }
+
+    // ── Auto-Vanish On Join ───────────────────────────────────────────────────
+
+    /** After join processing completes, check if auto-vanish-on-join is enabled for this player. */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoinAutoVanish(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        if (!player.hasPermission("vanishpp.vanish")) return;
+        if (plugin.isVanished(player)) return; // Already vanished via reconcile
+
+        plugin.getVanishScheduler().runAsync(() -> {
+            boolean autoVanish = plugin.getStorageProvider().getAutoVanishOnJoin(player.getUniqueId());
+            if (!autoVanish) return;
+            plugin.getVanishScheduler().runGlobal(() -> {
+                if (player.isOnline() && !plugin.isVanished(player)) {
+                    plugin.vanishPlayer(player, player, null);
+                }
+            });
+        });
+    }
+
+    // ── World Change: reapply per-world rules ─────────────────────────────────
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onWorldChangeRules(PlayerChangedWorldEvent event) {
+        Player player = event.getPlayer();
+        if (!plugin.isVanished(player)) return;
+        // Re-apply per-world rule overrides for the new world
+        plugin.getVanishScheduler().runLaterGlobal(() -> {
+            if (player.isOnline() && plugin.isVanished(player)) {
+                plugin.applyWorldRules(player);
+            }
+        }, 1L);
+    }
+
+    // ── Invsee: shift-right-click a player to view their inventory ─────────────
+
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onInvsee(PlayerInteractEntityEvent event) {
+        Player viewer = event.getPlayer();
+        if (!viewer.isSneaking()) return;
+        if (!(event.getRightClicked() instanceof Player target)) return;
+        if (!viewer.hasPermission("vanishpp.invsee")) return;
+
+        event.setCancelled(true);
+        viewer.openInventory(target.getInventory());
+
+        if (!viewer.hasPermission("vanishpp.invsee.modify")) {
+            plugin.invseeViewOnly.add(viewer.getUniqueId());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInvseeClick(org.bukkit.event.inventory.InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player viewer)) return;
+        if (!plugin.invseeViewOnly.contains(viewer.getUniqueId())) return;
+        event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInvseeClose(InventoryCloseEvent event) {
+        plugin.invseeViewOnly.remove(event.getPlayer().getUniqueId());
     }
 
 }

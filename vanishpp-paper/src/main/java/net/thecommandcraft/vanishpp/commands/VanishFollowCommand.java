@@ -90,11 +90,11 @@ public class VanishFollowCommand implements CommandExecutor, TabCompleter, Liste
             return true;
         }
 
-        // Enter spectator if not already
-        if (player.getGameMode() != GameMode.SPECTATOR) {
-            plugin.spectateOriginalGamemodes.put(player.getUniqueId(), player.getGameMode());
-            player.setGameMode(GameMode.SPECTATOR);
-        }
+        // Enter spectator if not already. saveGamemodeForRestore() only writes if nothing is
+        // already pending, so this is safe to call unconditionally even if the player is
+        // already in spectator from /vspec or the double-shift toggle.
+        plugin.saveGamemodeForRestore(player);
+        player.setGameMode(GameMode.SPECTATOR);
 
         plugin.spectateFollowTargets.put(player.getUniqueId(), target.getUniqueId());
         player.teleportAsync(target.getLocation());
@@ -112,9 +112,7 @@ public class VanishFollowCommand implements CommandExecutor, TabCompleter, Liste
                     plugin.getConfigManager().getLanguageManager().getMessage("vfollow.not-following"));
             return;
         }
-        // Restore gamemode
-        GameMode gm = plugin.spectateOriginalGamemodes.remove(player.getUniqueId());
-        if (gm != null) player.setGameMode(gm);
+        plugin.restoreSavedGamemode(player);
         player.sendActionBar(Component.empty());
         plugin.getMessageManager().sendMessage(player,
                 plugin.getConfigManager().getLanguageManager().getMessage("vfollow.stopped"));
@@ -161,8 +159,7 @@ public class VanishFollowCommand implements CommandExecutor, TabCompleter, Liste
                 Player follower = Bukkit.getPlayer(followerUuid);
                 if (follower != null) {
                     plugin.spectateFollowTargets.remove(followerUuid);
-                    GameMode gm = plugin.spectateOriginalGamemodes.remove(followerUuid);
-                    if (gm != null) follower.setGameMode(gm);
+                    plugin.restoreSavedGamemode(follower);
                     follower.sendActionBar(Component.empty());
                     plugin.getMessageManager().sendMessage(follower,
                             plugin.getConfigManager().getLanguageManager()

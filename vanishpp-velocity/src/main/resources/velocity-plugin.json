@@ -5,5 +5,7 @@
   "description": "Velocity proxy component for Vanish++. Provides cross-server vanish sync and centralized config management.",
   "authors": ["TheCommandCraft"],
   "main": "net.thecommandcraft.vanishpp.velocity.VanishppVelocity",
-  "dependencies": []
+  "dependencies": [
+    { "id": "luckperms", "optional": true }
+  ]
 }
