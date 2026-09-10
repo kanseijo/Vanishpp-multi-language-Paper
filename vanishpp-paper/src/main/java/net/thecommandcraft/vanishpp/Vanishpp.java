@@ -1290,62 +1290,38 @@ public class Vanishpp extends JavaPlugin implements Listener {
         if (player.hasMetadata("vanishpp_night_vision")) {
             player.removeMetadata("vanishpp_night_vision", this);
 
-            // Snapshot of any NV the player had before vanishing (taken in applyVanishEffects).
+            // Snapshot of any NV the player had before vanishing (taken in applyVanishEffects), so we
+            // can restore it exactly and never destroy NV the player earned/acquired on their own.
             int[] preNV = null;
             if (player.hasMetadata("vanishpp_pre_night_vision")) {
                 Object v = player.getMetadata("vanishpp_pre_night_vision").get(0).value();
                 if (v instanceof int[] arr) preNV = arr;
                 player.removeMetadata("vanishpp_pre_night_vision", this);
             }
-
-            // Replace INFINITE NV with a 1-tick effect that expires naturally.
-            // Do NOT use removePotionEffect() — it breaks the game engine's internal
-            // equipment-effect tracking and prevents equipment from re-applying NV.
-            player.addPotionEffect(
-                    new PotionEffect(PotionEffectType.NIGHT_VISION, 1, 0, false, false), true);
-
-            // Force equipment re-evaluation by stripping then restoring armor across two ticks.
-            // After the 1-tick NV expires, the game detects the equipment change and
-            // re-applies any equipment-provided effects (including NV if applicable).
             final boolean restorePreNV = preNV != null && preNV.length >= 2;
-            final int preNVDuration = restorePreNV ? preNV[0] : 0;
+            final int preNVDuration = restorePreNV ? Math.max(preNV[0], 1) : 0;
             final int preNVAmplifier = restorePreNV ? preNV[1] : 0;
             final boolean preNVAmbient = restorePreNV && preNV.length >= 3 && preNV[2] != 0;
             final boolean preNVParticles = restorePreNV && preNV.length >= 4 && preNV[3] != 0;
-            vanishScheduler.runLaterGlobal(() -> {
-                if (!player.isOnline()) return;
-                org.bukkit.inventory.PlayerInventory inv = player.getInventory();
-                org.bukkit.inventory.ItemStack helmet = inv.getHelmet();
-                org.bukkit.inventory.ItemStack chest = inv.getChestplate();
-                org.bukkit.inventory.ItemStack legs = inv.getLeggings();
-                org.bukkit.inventory.ItemStack boots = inv.getBoots();
-                boolean hasArmor = (helmet != null && !helmet.getType().isAir())
-                        || (chest != null && !chest.getType().isAir())
-                        || (legs != null && !legs.getType().isAir())
-                        || (boots != null && !boots.getType().isAir());
-                if (hasArmor) {
-                    inv.setHelmet(null);
-                    inv.setChestplate(null);
-                    inv.setLeggings(null);
-                    inv.setBoots(null);
-                    vanishScheduler.runLaterGlobal(() -> {
-                        if (!player.isOnline()) return;
-                        inv.setHelmet(helmet);
-                        inv.setChestplate(chest);
-                        inv.setLeggings(legs);
-                        inv.setBoots(boots);
-                    }, 1L);
-                }
-                // Restore the player's own pre-vanish NV once the plugin's 1-tick NV has expired and
-                // equipment has been re-evaluated.
-                if (restorePreNV) {
-                    vanishScheduler.runLaterGlobal(() -> {
-                        if (!player.isOnline()) return;
+
+            // Reliably remove the plugin's INFINITE NV. The earlier "1-tick soft-expiry" approach did
+            // not actually expire on Purpur 1.21.11, leaving the player with permanent night vision
+            // after unvanishing (reported in issue #2). A direct removePotionEffect() is the only
+            // deterministic way to drop the plugin's effect; we then restore the player's own NV
+            // snapshot right after, on the next tick, so their own night vision is preserved.
+            player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+
+            if (restorePreNV) {
+                // Schedule the restore on the following tick so the removal has settled, then re-apply
+                // the player's own NV (potions, beacons, etc.) that existed before vanishing.
+                vanishScheduler.runLaterGlobal(() -> {
+                    if (!player.isOnline()) return;
+                    if (!player.hasPotionEffect(PotionEffectType.NIGHT_VISION)) {
                         player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION,
-                                Math.max(preNVDuration, 1), preNVAmplifier, preNVAmbient, preNVParticles), false);
-                    }, 1L);
-                }
-            }, 1L);
+                                preNVDuration, preNVAmplifier, preNVAmbient, preNVParticles), false);
+                    }
+                }, 1L);
+            }
         }
         if (player.hasPotionEffect(PotionEffectType.INVISIBILITY))
             player.removePotionEffect(PotionEffectType.INVISIBILITY);
