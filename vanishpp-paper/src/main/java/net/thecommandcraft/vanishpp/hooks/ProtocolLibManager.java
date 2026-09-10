@@ -256,11 +256,15 @@ public class ProtocolLibManager {
                                 packet.getPlayerInfoDataLists().write(0, result.kept());
                             }
                         } catch (Exception e) {
-                            // Fail closed, same reasoning as the SCOREBOARD_TEAM scrub above -
-                            // an unrecognized packet shape must not be forwarded unfiltered.
-                            event.setCancelled(true);
-                            ProtocolLibManager.this.plugin.getLogger().warning(
-                                    "Failed to scrub PLAYER_INFO packet, cancelling for safety: " + e.getMessage());
+                            // Fail open here, unlike the SCOREBOARD_TEAM scrub. Cancelling the whole
+                            // PLAYER_INFO packet destroys every player's skin/tab entry for every
+                            // observer — on servers where ProtocolLib cannot parse the 1.21.x packet
+                            // shape (e.g. Purpur 1.21.11, which ProtocolLib logs as untested) this
+                            // throws on every player join, blanking all skins. Bukkit's own hidePlayer()
+                            // remains the primary vanish-visibility layer, so leaving the packet alone
+                            // on a parse error is far less harmful than blanking everyone's display.
+                            ProtocolLibManager.this.plugin.getLogger().fine(
+                                    "PLAYER_INFO scrub skipped (packet not parseable): " + e.getMessage());
                         }
                     }
                 });
