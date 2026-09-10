@@ -144,10 +144,12 @@ public class PlayerListener implements Listener {
                         plugin.getIntegrationManager().updateHooks(player, true);
                         if (plugin.getTabPluginHook() != null)
                             plugin.getTabPluginHook().update(player, true);
-                        // Rebuild the scoreboard from scratch at these later points too:
-                        // a player restored as vanished via reconciliation (not just auto-vanish)
-                        // is equally exposed to TAB overwriting the sidebar after join.
-                        if (plugin.getVanishScoreboard() != null)
+                        // Rebuild the scoreboard from scratch at the final stage only, so TAB has
+                        // settled: a player restored as vanished via reconciliation (not just
+                        // auto-vanish) is equally exposed to TAB overwriting the sidebar after join.
+                        // Rebuilding at every stage races TAB's async pipeline and causes the
+                        // sidebar to flicker or get re-overwritten.
+                        if (delay == 60L && plugin.getVanishScoreboard() != null)
                             plugin.getVanishScoreboard().forceReshow(player);
                     }
                 }, delay);
@@ -187,12 +189,11 @@ public class PlayerListener implements Listener {
                     plugin.getVanishScheduler().runGlobal(() -> {
                         if (!player.isOnline()) return;
                         if (plugin.isVanished(player)) {
-                            // Logged off while vanished — the DB restore path already
-                            // applied vanish effects at join, but another plugin
-                            // (e.g. TAB) may have overwritten the sidebar right after
-                            // join. Force-rebuild it at this later point in time.
-                            if (plugin.getVanishScoreboard() != null)
-                                plugin.getVanishScoreboard().forceReshow(player);
+                            // The synchronous block above already applied vanish effects and
+                            // silent-join for auto-vanish players, so by the time this async task
+                            // runs the player is normally already vanished. This is purely a
+                            // safety net for the edge case where the sync check failed (e.g. a
+                            // storage read error at join): only then vanish them silently here.
                         } else {
                             plugin.vanishPlayerSilently(player);
                         }
