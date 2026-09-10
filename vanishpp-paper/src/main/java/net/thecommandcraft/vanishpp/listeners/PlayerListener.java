@@ -104,9 +104,19 @@ public class PlayerListener implements Listener {
         }
 
         // Immediate Vanish Logic
-        if (plugin.isVanished(player)) {
-            plugin.applyVanishEffects(player);
-            plugin.updateVanishVisibility(player);
+        // If the player has the auto-vanish-on-join preference, treat them as vanished right now
+        // (before the join broadcast is sent) so the join is silent. Without this, an auto-vanish
+        // player who manually unvanished before logging off comes back with isVanished=false: the
+        // join broadcast fires as a normal join, yet the (async) auto-vanish preference then hides
+        // them moments later — a jarring "joined, but not in the list" inconsistency.
+        boolean autoVanishPref = plugin.getPermissionManager().hasPermission(player, "vanishpp.vanish")
+                && plugin.getStorageProvider().getAutoVanishOnJoin(joinUuid);
+
+        if (plugin.isVanished(player) || autoVanishPref) {
+            if (autoVanishPref) {
+                plugin.applyVanishEffects(player);
+                plugin.updateVanishVisibility(player);
+            }
             if (config.hideRealJoin)
                 event.joinMessage(null);
             // Notify staff that a vanished player silently joined
