@@ -126,4 +126,28 @@ class LocalizationTest {
         plugin.removeVanishEffects(player);
         assertFalse(player.isSleepingIgnored(), "unvanished player should no longer be sleeping-ignored");
     }
+
+    @Test
+    void testVersionKeysResolveInBothLanguages() {
+        // Upstream v1.1.9.1 added the nested version.* keys used by /vanish version. The
+        // LanguageManager flattens them to messages.version.*, so the flat lookup must resolve
+        // for the active language rather than falling back to a [Missing: ...] marker.
+        var lm = plugin.getConfigManager().getLanguageManager();
+
+        // en-us
+        plugin.getConfig().set("language", "en-us");
+        plugin.reloadPluginConfig();
+        assertFalse(lm.getMessage("version.header").contains("[Missing"),
+                "version.header must resolve (en-us)");
+        assertFalse(lm.getMessage("version.up-to-date").contains("[Missing"),
+                "version.up-to-date must resolve (en-us)");
+
+        // zh-cn — upstream ships a translated version.* block, so this must not fall back either.
+        plugin.getConfig().set("language", "zh-cn");
+        plugin.reloadPluginConfig();
+        assertFalse(lm.getMessage("version.header").contains("[Missing"),
+                "version.header must resolve (zh-cn)");
+        assertFalse(lm.getMessage("version.modrinth").contains("[Missing"),
+                "version.modrinth must resolve (zh-cn)");
+    }
 }
