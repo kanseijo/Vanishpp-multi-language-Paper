@@ -6,8 +6,8 @@
 
 [**English**](README.md) | [**中文**](README_zh-CN.md)
 
-[![Modrinth](https://img.shields.io/modrinth/v/kbKpK1bc?label=Modrinth&logo=modrinth)](https://modrinth.com/plugin/vanish++)
-[![Modrinth Downloads](https://img.shields.io/modrinth/dt/kbKpK1bc?logo=modrinth)](https://modrinth.com/plugin/vanish++)
+[![Modrinth](https://img.shields.io/modrinth/v/kbKpK1bc?label=Modrinth&logo=modrinth)](https://modrinth.com/plugin/vanish-plus-plus)
+[![Modrinth Downloads](https://img.shields.io/modrinth/dt/kbKpK1bc?logo=modrinth)](https://modrinth.com/plugin/vanish-plus-plus)
 [![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://adoptium.net/)
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.20.6--26.2-brightgreen)](https://www.minecraft.net/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
@@ -172,7 +172,7 @@ Hooks directly into the server protocol to scrub your existence from clients. *(
 
 > **⚠️ Tested platform (this fork):** **Purpur 1.21.11 build 2558** — the `vanishpp-paper` module was built and tested on this exact server build only. Compatibility with other Paper-family versions is expected but not verified by this fork.
 
-**Optional integrations:** TAB (NEZNAMY), PlaceholderAPI, Dynmap, EssentialsX, DiscordSRV, Simple Voice Chat
+**Optional integrations:** TAB (NEZNAMY), PlaceholderAPI, Dynmap, EssentialsX, DiscordSRV, Statusbot, Simple Voice Chat
 
 **Storage options:** YAML (default), MySQL 5.7+, PostgreSQL 12+, Redis (cross-server sync)
 
@@ -180,7 +180,7 @@ Hooks directly into the server protocol to scrub your existence from clients. *(
 
 ## Installation
 
-1. Download the latest release from [Modrinth](https://modrinth.com/plugin/vanish++)
+1. Download the latest release from [Modrinth](https://modrinth.com/plugin/vanish-plus-plus)
 2. Place `vanishpp-x.x.x.jar` in your server's `plugins/` folder
 3. Start or restart your server
 4. *(Optional)* Install ProtocolLib for full stealth feature support

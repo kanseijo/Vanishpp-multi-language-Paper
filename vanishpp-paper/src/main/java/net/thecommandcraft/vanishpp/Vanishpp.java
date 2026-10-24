@@ -260,14 +260,17 @@ public class Vanishpp extends JavaPlugin implements Listener {
         registerCommand("vadmin", new VanishAdminCommand(this));
         registerCommand("vwand", new VanishWandCommand(this));
         registerCommand("vchangelog", new VanishChangelogCommand(this));
+        registerCommand("vinfo", (sender, command, label, args) ->
+                getCommand("vanish").execute(sender, "vanish", new String[]{"info"}));
         registerCommand("vzone", new VanishZoneCommand(this));
         registerCommand("vincognito", new IncognitoCommand(this));
         registerCommand("vdowngrade", new net.thecommandcraft.vanishpp.commands.DowngradeCommand(this));
 
         // Scoreboard
-        saveResource("scoreboards.yml", false);
-        scoreboardConfig = YamlConfiguration.loadConfiguration(
-                new java.io.File(getDataFolder(), "scoreboards.yml"));
+        java.io.File scoreboardFile = new java.io.File(getDataFolder(), "scoreboards.yml");
+        if (!scoreboardFile.exists())
+            saveResource("scoreboards.yml", false);
+        scoreboardConfig = YamlConfiguration.loadConfiguration(scoreboardFile);
         this.vanishScoreboard = new VanishScoreboard(this);
         vanishScoreboard.reload();
 
@@ -1206,6 +1209,8 @@ public class Vanishpp extends JavaPlugin implements Listener {
         if (voiceChatHook != null)
             voiceChatHook.updateVanishState(player, true);
         integrationManager.updateHooks(player, true);
+        if (integrationManager.getStatusbot() != null)
+            integrationManager.getStatusbot().refreshStatus();
         if (tabPluginHook != null)
             tabPluginHook.update(player, true);
         refreshVisibilityWithGlow(player);
@@ -1339,6 +1344,8 @@ public class Vanishpp extends JavaPlugin implements Listener {
         if (voiceChatHook != null)
             voiceChatHook.updateVanishState(player, false);
         integrationManager.updateHooks(player, false);
+        if (integrationManager.getStatusbot() != null)
+            integrationManager.getStatusbot().refreshStatus();
         if (tabPluginHook != null)
             tabPluginHook.update(player, false);
         // Use hide-then-show to force fresh metadata packets — removes stale glow from staff clients
@@ -1430,6 +1437,9 @@ public class Vanishpp extends JavaPlugin implements Listener {
             if (integrationManager.getDiscordSRV() != null) {
                 integrationManager.getDiscordSRV().sendFakeQuit(player);
             }
+            if (integrationManager.getStatusbot() != null) {
+                integrationManager.getStatusbot().sendFakeQuit(player);
+            }
         }
         notifyStaff(player, executor, true);
     }
@@ -1448,6 +1458,9 @@ public class Vanishpp extends JavaPlugin implements Listener {
             // Send to Discord
             if (integrationManager.getDiscordSRV() != null) {
                 integrationManager.getDiscordSRV().sendFakeJoin(player);
+            }
+            if (integrationManager.getStatusbot() != null) {
+                integrationManager.getStatusbot().sendFakeJoin(player);
             }
         }
         removeVanishEffects(player);

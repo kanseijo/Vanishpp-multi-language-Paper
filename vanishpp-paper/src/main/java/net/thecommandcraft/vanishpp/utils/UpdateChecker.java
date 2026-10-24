@@ -8,26 +8,25 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.thecommandcraft.vanishpp.Vanishpp;
+import net.thecommandcraft.vanishpp.common.update.UpdateSources;
 import net.thecommandcraft.vanishpp.config.ConfigManager;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.URL;
 
 public class UpdateChecker {
 
     private final Vanishpp plugin;
-    private static final String PROJECT_SLUG = "vanish%2B%2B";
-    private static final String MODRINTH_URL = "https://modrinth.com/plugin/vanish++";
-    private static final String API_BASE_URL = "https://api.modrinth.com/v2/project/" + PROJECT_SLUG + "/version";
 
     private static final String TEST_VERSION = null;
 
     private String latestVersion;
+    private String latestVersionId;
     private String latestVersionType;
     private boolean updateAvailable;
+    private volatile Boolean lastCheckSucceeded; // null until the first check finishes
 
     public UpdateChecker(Vanishpp plugin) {
         this.plugin = plugin;
@@ -52,17 +51,14 @@ public class UpdateChecker {
 
     private void fetchAndCompare() {
         try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(buildApiUrl()).openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(10000);
-            connection.setRequestProperty("User-Agent",
-                    "TheCommandCraft/Vanishpp/" + plugin.getDescription().getVersion());
+            HttpURLConnection connection = UpdateSources.open(buildApiUrl(), userAgent());
 
             try {
                 int responseCode = connection.getResponseCode();
                 if (responseCode != 200) {
-                    plugin.getLogger().warning("[UpdateChecker] Modrinth returned HTTP " + responseCode);
+                    plugin.getLogger().warning("[UpdateChecker] Modrinth returned HTTP " + responseCode
+                            + ", checking GitHub instead.");
+                    checkGithub();
                     return;
                 }
                 try (InputStreamReader reader = new InputStreamReader(connection.getInputStream())) {
@@ -92,6 +88,7 @@ public class UpdateChecker {
                     String currentVersion = TEST_VERSION != null
                             ? TEST_VERSION : plugin.getDescription().getVersion();
 
+                    lastCheckSucceeded = true;
                     String cleanRemote  = remoteVersion.replaceAll("[^0-9.]", "");
                     String cleanCurrent = currentVersion.replaceAll("[^0-9.]", "");
 
@@ -104,12 +101,13 @@ public class UpdateChecker {
 
                     if (isNewer) {
                         this.latestVersion = remoteVersion;
+                        this.latestVersionId = best.has("id") ? best.get("id").getAsString() : null;
                         this.latestVersionType = remoteType;
                         this.updateAvailable = true;
                         plugin.getLogger().warning("---------------------------------------------------");
                         plugin.getLogger().warning("A new version of Vanish++ is available: "
                                 + remoteVersion + " [" + remoteType + "]");
-                        plugin.getLogger().warning("Download: " + MODRINTH_URL);
+                        plugin.getLogger().warning("Download: " + getDownloadUrl());
                         plugin.getLogger().warning("---------------------------------------------------");
                     } else {
                         this.updateAvailable = false;
@@ -121,8 +119,65 @@ public class UpdateChecker {
                 connection.disconnect();
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("[UpdateChecker] Check failed: " + e.getMessage());
+            plugin.getLogger().warning("[UpdateChecker] Modrinth check failed (" + e.getMessage()
+                    + "), checking GitHub instead.");
+            checkGithub();
         }
+    }
+
+    /**
+     * Fallback when Modrinth can't be reached: compares against the latest GitHub release. Only
+     * stable releases are listed there as "latest", and the download link still goes to Modrinth.
+     */
+    private void checkGithub() {
+        try {
+            String remoteVersion = UpdateSources.fetchGithubLatestVersion(userAgent());
+            if (remoteVersion == null) {
+                lastCheckSucceeded = false;
+                return;
+            }
+            lastCheckSucceeded = true;
+            String currentVersion = TEST_VERSION != null ? TEST_VERSION : plugin.getDescription().getVersion();
+            if (UpdateSources.compareVersions(currentVersion, remoteVersion) < 0) {
+                this.latestVersion = remoteVersion;
+                this.latestVersionId = null;
+                this.latestVersionType = "release";
+                this.updateAvailable = true;
+                plugin.getLogger().warning("---------------------------------------------------");
+                plugin.getLogger().warning("A new version of Vanish++ is available: " + remoteVersion + " [release]");
+                plugin.getLogger().warning("Download: " + getDownloadUrl());
+                plugin.getLogger().warning("---------------------------------------------------");
+            } else {
+                this.updateAvailable = false;
+                plugin.getLogger().info("[UpdateChecker] Vanish++ is up to date (running " + currentVersion + ").");
+            }
+        } catch (Exception e) {
+            lastCheckSucceeded = false;
+            plugin.getLogger().warning("[UpdateChecker] Check failed on Modrinth and GitHub: " + e.getMessage());
+        }
+    }
+
+    private String userAgent() {
+        return "TheCommandCraft/Vanishpp/" + plugin.getDescription().getVersion();
+    }
+
+    /** null if no check has finished yet, otherwise whether the last check reached Modrinth. */
+    public Boolean getLastCheckSucceeded() {
+        return lastCheckSucceeded;
+    }
+
+    public boolean isUpdateAvailable() {
+        return updateAvailable;
+    }
+
+    /** The newest version found by the last check, or null if none was found yet. */
+    public String getLatestVersion() {
+        return latestVersion;
+    }
+
+    /** Link to the exact Modrinth version of the update, or the project page if unknown. */
+    public String getDownloadUrl() {
+        return UpdateSources.downloadPage(latestVersionId);
     }
 
     /**
@@ -159,21 +214,11 @@ public class UpdateChecker {
 
     /** Compares two semver strings. Returns negative if a < b, 0 if equal, positive if a > b. */
     private int compareSemver(String a, String b) {
-        try {
-            String[] pa = a.split("\\.");
-            String[] pb = b.split("\\.");
-            int len = Math.max(pa.length, pb.length);
-            for (int i = 0; i < len; i++) {
-                int va = i < pa.length ? Integer.parseInt(pa[i]) : 0;
-                int vb = i < pb.length ? Integer.parseInt(pb[i]) : 0;
-                if (va != vb) return Integer.compare(va, vb);
-            }
-        } catch (NumberFormatException ignored) {}
-        return a.compareToIgnoreCase(b);
+        return UpdateSources.compareVersions(a, b);
     }
 
     private String buildApiUrl() {
-        return API_BASE_URL + "?loaders=%5B%22" + detectLoader() + "%22%5D";
+        return UpdateSources.modrinthVersionsUrl(detectLoader());
     }
 
     /** Maps the running server's name to its Modrinth loader slug. */
@@ -245,7 +290,7 @@ public class UpdateChecker {
                 .replace("%version%", latestVersion)
                 .replace("%type%", type));
 
-        String link = MODRINTH_URL + "/version/" + latestVersion;
+        String link = getDownloadUrl();
         String downloadBtn = lm.getMessage("update.download").replace("%version%", latestVersion);
         String hoverText   = lm.getMessage("update.hover").replace("%version%", latestVersion);
         Component button = plugin.getMessageManager().parse(downloadBtn, player)

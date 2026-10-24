@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.9.1] - 2026-10-23
+
+### Added
+- **`/vanish version`, `/vanish info` and `/vinfo`:** show the running version, whether an update is available (with a click-to-download link to the exact Modrinth version) and where to find help. `/vhelp` now shows the version at the top too. Needs `vanishpp.vanish`; everyone else gets the usual unknown-command message, so the plugin stays hidden.
+
+### Fixed
+- **Update checker now follows redirects:** Java's `HttpURLConnection` doesn't follow `307`/`308` redirects, which is how Modrinth answered after the project was renamed - so every version up to 1.1.8 silently stopped finding updates. 1.1.9 already switched to the project ID; the checker now also follows up to 5 HTTPS redirects, so a future rename or move on Modrinth's side can't break it the same way.
+- **Velocity update checker never worked:** it looked up the project under `update-checker.modrinth-id`, whose default (`vanishpp`) never existed on Modrinth, so proxies were never told about updates. It now uses the project ID like the Paper side, and the misleading `modrinth-id` setting is gone from both default configs.
+- **Update checks fall back to GitHub:** if Modrinth can't be reached or answers with an error, both checkers compare against the latest GitHub release instead (the download link still goes to Modrinth), so one side breaking can't silently stop update notifications again. A daily GitHub Action also checks the exact URL the plugins use and fails as soon as Modrinth stops answering it directly or a GitHub release is missing from Modrinth.
+- **Update download link could open the Velocity build:** the link pointed at the version number, which the Paper and Velocity uploads share. It now uses the exact Modrinth version ID.
+
+## [1.1.9] - 2026-10-23
+
+### Added
+- **Statusbot integration (#35):** [Statusbot](https://modrinth.com/plugin/discord-statusbot) reads `getOnlinePlayers()` directly and has no vanish support, so vanished players showed up in its Discord bot status, embeds (`$amount-of-players$`/`$player-list$`) and join/leave messages. Statusbot has no API, so the new `StatusbotHook` hooks its internals via reflection: Statusbot's own join/quit handlers are swapped for vanish-aware ones, the two embed variables are overridden with visible-only versions, the bot status is refreshed on every vanish change, and vanishing/unvanishing sends a fake leave/join (following `broadcast-fake-quit`/`broadcast-fake-join`). Tested against Statusbot 24.0 - if a different version doesn't match, the hook logs a warning and leaves Statusbot untouched, and a failure at runtime disables the hook and restores Statusbot's defaults. Covered by `StatusbotHookTest` against stand-ins mirroring Statusbot's classes, and verified on a real Paper 26.3 server with Statusbot 24.0 and a live Discord bot: vanishing/unvanishing posts the fake leave/join, and joining or leaving while vanished posts nothing.
+- **Multi-language support (#29):** Every message, GUI text, action button, rule name, TAB prefix, bossbar title and scoreboard label now lives in per-language files (`languages/messages_<lang>.yml`, `languages/scoreboards_<lang>.yml`), picked with the `language` option in `config.yml`. Ships with English (`en-us`) and Simplified Chinese (`zh-cn`); missing keys in a translation fall back to English per key. (Thanks @kanseijo, PR #29)
+
+### Fixed
+- **Update checker never found new versions:** the Modrinth project slug was renamed, so the old slug in the API URL now only gets a `308` redirect (logged as `[UpdateChecker] Modrinth returned HTTP 308`), which Java's `HttpURLConnection` doesn't follow. The checker now uses the project ID, which never changes.
+- **Periodic update check ran its HTTP request on the main thread:** a slow or unreachable Modrinth could freeze the server long enough to trip the Watchdog. It now runs async, like the startup check. (Thanks @kanseijo, PR #30)
+- **"Could not save scoreboards.yml" warning on every startup:** the default `scoreboards.yml` is now only extracted when it doesn't exist yet.
+
 ## [1.1.9] - 2026-08-23
 
 ### Added
