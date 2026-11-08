@@ -118,13 +118,41 @@ class LocalizationTest {
         // Issue #2: a vanished player must never block the server from skipping the night. Even when
         // prevent-sleeping is OFF, vanishing should mark the player sleeping-ignored (fauxSleeping)
         // so they count as a sleeper rather than an awake denominator in the skip-night percentage.
+        //
+        // SleepRecordingPlayer, not a plain PlayerMock: MockBukkit's isSleepingIgnored() throws
+        // UnimplementedOperationException, which JUnit counts as skipped, so the assertions below
+        // would never actually run.
+        SleepRecordingPlayer sleeper = new SleepRecordingPlayer(server, "Sleepy");
+        server.addPlayer(sleeper);
+
         plugin.getConfigManager().preventSleeping = false;
-        plugin.applyVanishEffects(player);
-        assertTrue(player.isSleepingIgnored(), "vanished player should be sleeping-ignored even when prevent-sleeping=false");
+        plugin.applyVanishEffects(sleeper);
+        assertTrue(sleeper.isSleepingIgnored(),
+                "vanished player should be sleeping-ignored even when prevent-sleeping=false");
 
         // And unvanishing clears it.
-        plugin.removeVanishEffects(player);
-        assertFalse(player.isSleepingIgnored(), "unvanished player should no longer be sleeping-ignored");
+        plugin.removeVanishEffects(sleeper);
+        assertFalse(sleeper.isSleepingIgnored(),
+                "unvanished player should no longer be sleeping-ignored");
+    }
+
+    /** PlayerMock that actually stores the sleeping-ignored flag (MockBukkit leaves it unimplemented). */
+    private static class SleepRecordingPlayer extends PlayerMock {
+        private boolean sleepingIgnored;
+
+        SleepRecordingPlayer(ServerMock server, String name) {
+            super(server, name);
+        }
+
+        @Override
+        public void setSleepingIgnored(boolean ignored) {
+            this.sleepingIgnored = ignored;
+        }
+
+        @Override
+        public boolean isSleepingIgnored() {
+            return sleepingIgnored;
+        }
     }
 
     @Test

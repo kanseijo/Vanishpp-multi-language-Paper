@@ -1619,7 +1619,9 @@ public class Vanishpp extends JavaPlugin implements Listener {
             if (restorePreNV) {
                 // Schedule the restore on the following tick so the removal has settled, then re-apply
                 // the player's own NV (potions, beacons, etc.) that existed before vanishing.
-                vanishScheduler.runLaterGlobal(() -> {
+                // Must be runLaterEntity, not runLaterGlobal: addPotionEffect has to run on the
+                // player's own region on Folia, where a global task would throw.
+                vanishScheduler.runLaterEntity(player, () -> {
                     if (!player.isOnline()) return;
                     if (!player.hasPotionEffect(PotionEffectType.NIGHT_VISION)) {
                         player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION,
