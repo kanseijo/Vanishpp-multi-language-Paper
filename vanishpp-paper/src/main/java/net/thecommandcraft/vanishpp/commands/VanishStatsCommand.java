@@ -31,7 +31,7 @@ public class VanishStatsCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
-        if (!sender.hasPermission("vanishpp.stats")) {
+        if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.stats")) {
             plugin.getMessageManager().sendMessage(sender,
                     plugin.getConfigManager().getLanguageManager().getMessage("unknown-command"));
             return true;
@@ -42,13 +42,13 @@ public class VanishStatsCommand implements CommandExecutor, TabCompleter {
 
         if (args.length >= 1) {
             // Viewing another player's stats
-            if (!sender.hasPermission("vanishpp.stats.others")) {
+            if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.stats.others")) {
                 plugin.getMessageManager().sendMessage(sender,
                         plugin.getConfigManager().noPermissionMessage);
                 return true;
             }
             Player online = Bukkit.getPlayer(args[0]);
-            if (online != null) {
+            if (online != null && plugin.getPermissionManager().canSee(sender, online)) {
                 targetUuid = online.getUniqueId();
                 targetName = online.getName();
             } else {
@@ -79,7 +79,8 @@ public class VanishStatsCommand implements CommandExecutor, TabCompleter {
             final VanishStats finalStats = new VanishStats(totalMs, stats.getVanishCount(), stats.getLongestSessionMs());
             final String name = targetName;
 
-            plugin.getVanishScheduler().runGlobal(() -> {
+            plugin.getVanishScheduler().runSender(sender, () -> {
+                if (!plugin.getPermissionManager().canSee(sender, targetUuid)) return;
                 var lm = plugin.getConfigManager().getLanguageManager();
                 plugin.getMessageManager().sendMessage(sender,
                         lm.getMessage("stats.header").replace("%player%", name));
@@ -98,9 +99,10 @@ public class VanishStatsCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                 @NotNull String label, @NotNull String[] args) {
-        if (args.length == 1 && sender.hasPermission("vanishpp.stats.others")) {
+        if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.stats")) return new ArrayList<>();
+        if (args.length == 1 && plugin.getPermissionManager().hasPermission(sender, "vanishpp.stats.others")) {
             List<String> names = new ArrayList<>();
-            for (Player p : Bukkit.getOnlinePlayers()) names.add(p.getName());
+            for (Player p : plugin.getPermissionManager().visiblePlayers(sender)) names.add(p.getName());
             return StringUtil.copyPartialMatches(args[0], names, new ArrayList<>());
         }
         return new ArrayList<>();

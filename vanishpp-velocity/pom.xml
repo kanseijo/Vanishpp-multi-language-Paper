@@ -7,7 +7,7 @@
     <parent>
         <groupId>net.thecommandcraft</groupId>
         <artifactId>vanishpp-parent</artifactId>
-        <version>1.1.9.1</version>
+        <version>1.1.11</version>
     </parent>
 
     <artifactId>vanishpp-velocity</artifactId>
@@ -88,6 +88,13 @@
     </build>
 
     <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Common protocol module (shaded in) -->
         <dependency>
             <groupId>net.thecommandcraft</groupId>

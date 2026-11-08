@@ -60,7 +60,7 @@ public class VanishSpectateCommand implements CommandExecutor, TabCompleter {
         }
 
         Player target = Bukkit.getPlayer(args[0]);
-        if (target == null || target.equals(player)) {
+        if (target == null || target.equals(player) || !plugin.getPermissionManager().canSee(player, target)) {
             plugin.getMessageManager().sendMessage(player,
                     plugin.getConfigManager().playerNotFoundMessage);
             return true;
@@ -68,21 +68,36 @@ public class VanishSpectateCommand implements CommandExecutor, TabCompleter {
 
         // Auto-vanish if not already vanished
         if (!plugin.isVanished(player)) {
-            plugin.vanishPlayer(player, player);
+            plugin.requestVanish(player, player, true, null, accepted -> {
+                if (accepted) startSpec(player, target);
+            });
+        } else {
+            startSpec(player, target);
         }
+        return true;
+    }
 
+    private void startSpec(Player player, Player target) {
+        if (!player.isOnline() || !target.isOnline() || !plugin.getPermissionManager().canSee(player, target)) return;
         // Save origin
         plugin.spectateOrigins.put(player.getUniqueId(), player.getLocation().clone());
         plugin.saveGamemodeForRestore(player);
 
         player.setGameMode(GameMode.SPECTATOR);
-        player.teleportAsync(target.getLocation());
         plugin.spectateFollowTargets.put(player.getUniqueId(), target.getUniqueId());
+        plugin.getVanishScheduler().runEntityNow(target, () -> {
+            Location destination = target.getLocation().clone();
+            plugin.getVanishScheduler().runEntityNow(player, () -> {
+                if (player.isOnline() && (plugin.isVanished(player)
+                        || plugin.getPermissionManager().hasPermission(player, "vanishpp.spectator.bypass"))
+                        && target.getUniqueId().equals(plugin.spectateFollowTargets.get(player.getUniqueId())))
+                    player.teleportAsync(destination);
+            });
+        });
 
         plugin.getMessageManager().sendMessage(player,
                 plugin.getConfigManager().getLanguageManager().getMessage("vspec.started")
                         .replace("%player%", target.getName()));
-        return true;
     }
 
     private void stopSpec(Player player) {
@@ -105,10 +120,11 @@ public class VanishSpectateCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                 @NotNull String label, @NotNull String[] args) {
+        if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.spectator") || !plugin.getPermissionManager().hasPermission(sender, "vanishpp.vanish")) return new ArrayList<>();
         if (args.length == 1) {
             List<String> completions = new ArrayList<>();
             completions.add("stop");
-            for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            for (Player p : plugin.getPermissionManager().visiblePlayers(sender)) completions.add(p.getName());
             return StringUtil.copyPartialMatches(args[0], completions, new ArrayList<>());
         }
         return new ArrayList<>();

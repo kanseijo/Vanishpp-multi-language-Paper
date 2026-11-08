@@ -29,7 +29,7 @@ public class VanishListCommand implements CommandExecutor {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label,
             @NotNull String[] args) {
-        if (!sender.hasPermission("vanishpp.list")) {
+        if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.list")) {
             plugin.getMessageManager().sendMessage(sender,
                     plugin.getConfigManager().getLanguageManager().getMessage("unknown-command"));
             return true;
@@ -42,7 +42,7 @@ public class VanishListCommand implements CommandExecutor {
 
         if (useProxy) {
             plugin.getProxyBridge().requestPlayerList(states ->
-                    plugin.getVanishScheduler().runGlobal(() -> renderProxyList(sender, states)));
+                    plugin.getVanishScheduler().runSender(sender, () -> renderProxyList(sender, states)));
             return true;
         }
 
@@ -57,7 +57,7 @@ public class VanishListCommand implements CommandExecutor {
         List<Player> vanished = new ArrayList<>();
         for (UUID uuid : plugin.getRawVanishedPlayers()) {
             Player p = Bukkit.getPlayer(uuid);
-            if (p != null && p.isOnline()) vanished.add(p);
+            if (p != null && p.isOnline() && plugin.getPermissionManager().canSee(sender, p)) vanished.add(p);
         }
 
         var lm = plugin.getConfigManager().getLanguageManager();
@@ -70,12 +70,12 @@ public class VanishListCommand implements CommandExecutor {
         plugin.getMessageManager().sendMessage(sender,
                 lm.getMessage("list.header").replace("%count%", String.valueOf(vanished.size())));
 
-        boolean canUnvanish = sender.hasPermission("vanishpp.vanish");
+        boolean canUnvanish = plugin.getPermissionManager().hasPermission(sender, "vanishpp.vanish");
 
         Component line = Component.empty();
         for (int i = 0; i < vanished.size(); i++) {
             Player p = vanished.get(i);
-            int level = plugin.getStorageProvider().getVanishLevel(p.getUniqueId());
+            int level = plugin.getPlayerData().level(p.getUniqueId());
 
             Component name = Component.text(p.getName(), NamedTextColor.GRAY);
 
@@ -106,6 +106,7 @@ public class VanishListCommand implements CommandExecutor {
     // ── Cross-server proxy list ───────────────────────────────────────────────
 
     private void renderProxyList(CommandSender sender, List<NetworkVanishState> states) {
+        states = states.stream().filter(state -> plugin.getPermissionManager().canSee(sender, state)).toList();
         var lm = plugin.getConfigManager().getLanguageManager();
 
         if (states.isEmpty()) {
@@ -141,7 +142,7 @@ public class VanishListCommand implements CommandExecutor {
             ));
 
             // Click-to-unvanish only works for players on THIS server
-            if (isLocal && sender.hasPermission("vanishpp.vanish")) {
+            if (isLocal && plugin.getPermissionManager().hasPermission(sender, "vanishpp.vanish")) {
                 name = name
                         .decorate(TextDecoration.UNDERLINED)
                         .clickEvent(ClickEvent.runCommand("/vanish " + s.playerName()));

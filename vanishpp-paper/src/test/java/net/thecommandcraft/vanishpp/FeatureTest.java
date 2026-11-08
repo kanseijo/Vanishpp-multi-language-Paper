@@ -36,6 +36,14 @@ class FeatureTest {
         MockBukkit.unmock();
     }
 
+    /** A real rejoin reads the player's state at pre-login before the join event fires. */
+    private void preLogin() throws InterruptedException {
+        java.util.concurrent.CountDownLatch read = new java.util.concurrent.CountDownLatch(1);
+        server.getPluginManager().callEventAsynchronously(new org.bukkit.event.player.AsyncPlayerPreLoginEvent(
+                player.getName(), java.net.InetAddress.getLoopbackAddress(), player.getUniqueId()), event -> read.countDown());
+        read.await();
+    }
+
     // -------------------------------------------------------------------------
     // Core vanish toggle
     // -------------------------------------------------------------------------
@@ -105,10 +113,11 @@ class FeatureTest {
     }
 
     @Test
-    void testSilentJoin_keepsMsgWhenNotVanished() {
+    void testSilentJoin_keepsMsgWhenNotVanished() throws InterruptedException {
         plugin.getConfigManager().hideRealJoin = true;
         // Player is NOT vanished
 
+        preLogin();
         PlayerJoinEvent joinEvent = new PlayerJoinEvent(player, Component.text("joined the game"));
         server.getPluginManager().callEvent(joinEvent);
 
@@ -224,12 +233,37 @@ class FeatureTest {
         player.performCommand("vanish");
         assertTrue(player.getAllowFlight(), "Flight should be preserved when disableFlyOnUnvanish=false");
 
-        // Case C: Rank permission overrides config disable
+    }
+
+    @Test
+    void testFlyPermissionDoesNotGrantFlightAfterUnvanish() {
+        player.setOp(true);
+        plugin.getRuleManager().setRule(player, RuleManager.SPECTATOR_GAMEMODE, false);
         plugin.getConfigManager().disableFlyOnUnvanish = true;
         player.addAttachment(plugin, "essentials.fly", true);
+        player.setAllowFlight(false);
+
         player.performCommand("vanish");
+        assertTrue(plugin.isVanished(player));
+        player.setAllowFlight(true);
         player.performCommand("vanish");
-        assertTrue(player.getAllowFlight(), "Flight should be preserved when player has essentials.fly");
+        assertFalse(player.getAllowFlight(), "Unvanish must restore disabled flight even with a fly permission");
+    }
+
+    @Test
+    void testExistingFlightSurvivesUnvanish() {
+        player.setOp(true);
+        plugin.getRuleManager().setRule(player, RuleManager.SPECTATOR_GAMEMODE, false);
+        plugin.getConfigManager().disableFlyOnUnvanish = true;
+        player.addAttachment(plugin, "essentials.fly", false);
+        player.addAttachment(plugin, "bukkit.command.fly", false);
+        player.setAllowFlight(true);
+
+        player.performCommand("vanish");
+        assertTrue(plugin.isVanished(player));
+        player.setAllowFlight(false);
+        player.performCommand("vanish");
+        assertTrue(player.getAllowFlight(), "Unvanish must restore flight that was enabled before vanish");
     }
 
     // -------------------------------------------------------------------------
@@ -242,16 +276,19 @@ class FeatureTest {
         UUID uuid = player.getUniqueId();
 
         player.performCommand("vanish");
+        awaitStorageWrites();
         assertTrue(plugin.getStorageProvider().isVanished(uuid), "Storage must record vanished state");
 
         plugin.getRuleManager().setRule(player, RuleManager.CAN_PICKUP_ITEMS, true);
         assertTrue(plugin.getRuleManager().getRule(player, RuleManager.CAN_PICKUP_ITEMS),
                 "Pickup rule should be set to true");
 
+        awaitStorageWrites();
         Map<String, Object> rules = plugin.getStorageProvider().getRules(uuid);
         assertEquals(true, rules.get(RuleManager.CAN_PICKUP_ITEMS), "Rule must be persisted in storage");
 
         plugin.setWarningIgnored(player, true);
+        awaitStorageWrites();
         assertTrue(plugin.getStorageProvider().hasAcknowledged(uuid, "protocol-lib-warning"),
                 "Acknowledgement must be persisted");
     }
@@ -312,11 +349,13 @@ class FeatureTest {
     }
 
     @Test
-    void testSilentJoin_msgPreserved_whenConfigFalse() {
+    void testSilentJoin_msgPreserved_whenConfigFalse() throws InterruptedException {
         plugin.getConfigManager().hideRealJoin = false;
         player.setOp(true);
         plugin.vanishPlayer(player, player);
+        awaitStorageWrites();
 
+        preLogin();
         PlayerJoinEvent event = new PlayerJoinEvent(player, Component.text("joined the game"));
         server.getPluginManager().callEvent(event);
 
@@ -371,4 +410,10 @@ class FeatureTest {
         assertEquals(2, plugin.getStorageProvider().getVanishLevel(player.getUniqueId()));
         assertEquals(5, plugin.getStorageProvider().getVanishLevel(p2.getUniqueId()));
     }
+    private void awaitStorageWrites() {
+        var completed = new java.util.concurrent.CountDownLatch(1);
+        plugin.submitStorageWork(completed::countDown);
+        assertDoesNotThrow(() -> assertTrue(completed.await(5, java.util.concurrent.TimeUnit.SECONDS), "accepted storage writes must finish"));
+    }
+
 }

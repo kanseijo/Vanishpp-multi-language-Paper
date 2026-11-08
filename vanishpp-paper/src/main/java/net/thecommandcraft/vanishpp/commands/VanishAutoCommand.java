@@ -31,7 +31,7 @@ public class VanishAutoCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
-        if (!sender.hasPermission("vanishpp.vanish")) {
+        if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.vanish")) {
             plugin.getMessageManager().sendMessage(sender,
                     plugin.getConfigManager().getLanguageManager().getMessage("unknown-command"));
             return true;
@@ -60,13 +60,13 @@ public class VanishAutoCommand implements CommandExecutor, TabCompleter {
                 target = (Player) sender;
                 newValue = arg.equals("on");
             } else {
-                if (!sender.hasPermission("vanishpp.vanish.others")) {
+                if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.vanish.others")) {
                     plugin.getMessageManager().sendMessage(sender,
                             plugin.getConfigManager().noPermissionMessage);
                     return true;
                 }
                 target = Bukkit.getPlayer(arg);
-                if (target == null) {
+                if (target == null || !plugin.getPermissionManager().canSee(sender, target)) {
                     plugin.getMessageManager().sendMessage(sender,
                             plugin.getConfigManager().playerNotFoundMessage);
                     return true;
@@ -74,13 +74,13 @@ public class VanishAutoCommand implements CommandExecutor, TabCompleter {
             }
         } else {
             // /vautovanish <player> <on|off>
-            if (!sender.hasPermission("vanishpp.vanish.others")) {
+            if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.vanish.others")) {
                 plugin.getMessageManager().sendMessage(sender,
                         plugin.getConfigManager().noPermissionMessage);
                 return true;
             }
             target = Bukkit.getPlayer(args[0]);
-            if (target == null) {
+            if (target == null || !plugin.getPermissionManager().canSee(sender, target)) {
                 plugin.getMessageManager().sendMessage(sender,
                         plugin.getConfigManager().playerNotFoundMessage);
                 return true;
@@ -96,11 +96,11 @@ public class VanishAutoCommand implements CommandExecutor, TabCompleter {
 
         if (newValue == null) {
             // Toggle current
-            plugin.getVanishScheduler().runAsync(() -> {
+            plugin.submitStorageWork(() -> {
                 boolean current = plugin.getStorageProvider().getAutoVanishOnJoin(uuid);
                 plugin.getStorageProvider().setAutoVanishOnJoin(uuid, !current);
                 boolean next = !current;
-                plugin.getVanishScheduler().runGlobal(() -> {
+                plugin.getVanishScheduler().runSender(sender, () -> {
                     String key = next ? "auto-vanish.enabled" : "auto-vanish.disabled";
                     plugin.getMessageManager().sendMessage(sender,
                             plugin.getConfigManager().getLanguageManager().getMessage(key)
@@ -109,9 +109,9 @@ public class VanishAutoCommand implements CommandExecutor, TabCompleter {
             });
         } else {
             final boolean finalValue = newValue;
-            plugin.getVanishScheduler().runAsync(() -> {
+            plugin.submitStorageWork(() -> {
                 plugin.getStorageProvider().setAutoVanishOnJoin(uuid, finalValue);
-                plugin.getVanishScheduler().runGlobal(() -> {
+                plugin.getVanishScheduler().runSender(sender, () -> {
                     String key = finalValue ? "auto-vanish.enabled" : "auto-vanish.disabled";
                     plugin.getMessageManager().sendMessage(sender,
                             plugin.getConfigManager().getLanguageManager().getMessage(key)
@@ -125,11 +125,12 @@ public class VanishAutoCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                 @NotNull String label, @NotNull String[] args) {
+        if (!plugin.getPermissionManager().hasPermission(sender, "vanishpp.vanish")) return new ArrayList<>();
         if (args.length == 1) {
             List<String> completions = new ArrayList<>();
             completions.add("on");
             completions.add("off");
-            for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            for (Player p : plugin.getPermissionManager().visiblePlayers(sender)) completions.add(p.getName());
             return StringUtil.copyPartialMatches(args[0], completions, new ArrayList<>());
         }
         if (args.length == 2) {

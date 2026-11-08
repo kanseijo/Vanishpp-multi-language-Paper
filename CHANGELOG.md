@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.11] - 2026-11-06
+
+### Changed
+- **Mobs look at players like in vanilla, but never at vanished players.** Each mob keeps its own look range and chance, for example 6 blocks for cows and 10 for cats. Like vanilla, mobs need line of sight, ignore spectators, and notice sneaking or invisible players from closer. Look goals aimed at other mobs are left untouched. (Thanks @Marzionz, PR #39)
+- **No invisibility potion while vanished.** The invisible flag already keeps mobs from noticing vanished players. Unvanishing removes the hidden potion from older versions, but keeps an invisibility potion you drank yourself.
+
+### Fixed
+- **Vanish++ didn't load on Paper 1.20.6.** The plugin required API version 1.21, so Paper 1.20.6 rejected it even though 1.20.6 is supported. It now loads on 1.20.6.
+- **Mobs looked at players for twice as long as in vanilla.** A look now lasts 2-4 seconds again.
+
+### Performance
+- **Less work per tick for mob AI.** The mob target check no longer schedules a task per mob every tick, and mobs scan their goals once instead of three times when they spawn or load.
+
+## [1.1.10] - 2026-11-05
+
+### Fixed
+- **Players couldn't see each other with ProtocolLib 5.3.0/5.4.0 installed** (log spam `Failed to scrub PLAYER_INFO packet, cancelling for safety: null`): those ProtocolLib releases hand out the wrong field of the tab-list packet, Vanish++ failed on it and dropped the whole packet, so players never got added to each other's tab list and weren't shown. The tab-list scrub now reads the packet's raw entry list, which works the same on every ProtocolLib version, and if it ever fails it sends the packet unchanged instead of dropping it (vanished players are still hidden by the server itself), and the warning shows up at most once every 10 minutes with a stack trace instead of on every packet. Tested on Paper 1.20.6, 1.21.4, 1.21.8, 1.21.10, 1.21.11, 26.1.2, 26.2 and 26.3 with ProtocolLib 5.3.0, 5.4.0 and the current dev builds.
+
 ## [1.1.9.1] - 2026-10-23
 
 ### Added

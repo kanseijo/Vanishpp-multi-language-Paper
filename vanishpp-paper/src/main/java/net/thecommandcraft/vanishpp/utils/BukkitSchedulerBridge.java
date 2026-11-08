@@ -28,9 +28,27 @@ public class BukkitSchedulerBridge implements VanishScheduler {
     }
 
     @Override
+    public Runnable startLater(Runnable runnable, long ticks) {
+        return Bukkit.getScheduler().runTaskLater(plugin, runnable, Math.max(1L, ticks))::cancel;
+    }
+
+    @Override
+    public Runnable startTimer(Runnable runnable, long delay, long period) {
+        return Bukkit.getScheduler().runTaskTimer(plugin, runnable, delay, period)::cancel;
+    }
+
+    @Override
     public void runEntity(Entity entity, Runnable runnable, Runnable retired) {
         Bukkit.getScheduler().runTask(plugin, runnable);
     }
+
+    @Override
+    public void runEntityNow(Entity entity, Runnable runnable) {
+        if (Bukkit.isPrimaryThread()) runnable.run();
+        else runEntity(entity, runnable, null);
+    }
+
+    @Override public boolean owns(Entity entity) { return Bukkit.isPrimaryThread(); }
 
     @Override
     public void runAsync(Runnable runnable) {

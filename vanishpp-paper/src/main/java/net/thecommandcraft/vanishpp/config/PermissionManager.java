@@ -1,6 +1,10 @@
 package net.thecommandcraft.vanishpp.config;
 
 import net.thecommandcraft.vanishpp.Vanishpp;
+import net.thecommandcraft.vanishpp.common.visibility.AudiencePolicy;
+import net.thecommandcraft.vanishpp.common.state.NetworkVanishState;
+import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
 
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -16,7 +20,7 @@ public class PermissionManager {
     private final Vanishpp plugin;
     private final File permissionsFile;
     private FileConfiguration permissionsConfig;
-    private final Map<UUID, List<String>> playerPermissions = new HashMap<>();
+    private final Map<UUID, List<String>> playerPermissions = new java.util.concurrent.ConcurrentHashMap<>();
 
     // Definitions for custom permission groups
     private static final Map<String, Set<String>> CUSTOM_GROUPS = new HashMap<>();
@@ -64,6 +68,7 @@ public class PermissionManager {
             plugin.saveResource("permissions.yml", false);
         }
         this.permissionsConfig = YamlConfiguration.loadConfiguration(permissionsFile);
+        plugin.voiceAudience.invalidateAll();
         playerPermissions.clear();
 
         ConfigurationSection permsSection = permissionsConfig.getConfigurationSection("permissions");
@@ -72,12 +77,13 @@ public class PermissionManager {
                 try {
                     UUID uuid = UUID.fromString(uuidString);
                     List<String> perms = permsSection.getStringList(uuidString);
-                    playerPermissions.put(uuid, new ArrayList<>(perms));
+                    playerPermissions.put(uuid, List.copyOf(perms));
                 } catch (IllegalArgumentException e) {
                     plugin.getLogger().warning("Invalid UUID found in permissions.yml: " + uuidString);
                 }
             }
         }
+        plugin.voiceAudience.invalidateAll();
         plugin.getLogger().info("Loaded custom permissions for " + playerPermissions.size() + " players.");
     }
 
@@ -96,23 +102,27 @@ public class PermissionManager {
     }
 
     public void addPermission(UUID uuid, String permission) {
-        List<String> perms = playerPermissions.computeIfAbsent(uuid, k -> new ArrayList<>());
-        if (!perms.contains(permission)) {
-            perms.add(permission);
-        }
+        plugin.voiceAudience.invalidate(uuid);
+        playerPermissions.compute(uuid, (key, old) -> {
+            List<String> permissions = new ArrayList<>(old == null ? List.of() : old);
+            if (!permissions.contains(permission)) permissions.add(permission);
+            return List.copyOf(permissions);
+        });
+        plugin.voiceAudience.invalidate(uuid);
         save();
     }
 
     public void removePermission(UUID uuid, String permission) {
-        List<String> perms = playerPermissions.get(uuid);
-        if (perms != null) {
-            perms.remove(permission);
-            if (perms.isEmpty()) {
-                playerPermissions.remove(uuid);
-            }
-        }
+        plugin.voiceAudience.invalidate(uuid);
+        playerPermissions.computeIfPresent(uuid, (key, old) -> {
+            List<String> permissions = new ArrayList<>(old);
+            permissions.remove(permission);
+            return permissions.isEmpty() ? null : List.copyOf(permissions);
+        });
+        plugin.voiceAudience.invalidate(uuid);
         save();
     }
+
 
     /**
      * Checks if a UUID has a permission in the custom file.
@@ -149,6 +159,15 @@ public class PermissionManager {
      * Checks permission via Bukkit (OP/Plugins) OR Custom File.
      */
     public boolean hasPermission(Player player, String permission) {
+        if (!plugin.getVanishScheduler().owns(player)) {
+            var facts = plugin.voiceAudience.facts(player.getUniqueId());
+            return hasPermission(player.getUniqueId(), permission)
+                    || (permission.equals("vanishpp.see") && facts != null && facts.permission());
+        }
+        return hasPermissionOwned(player, permission);
+    }
+
+    private boolean hasPermissionOwned(Player player, String permission) {
         try {
             if (player.hasPermission(permission)) {
                 return true;
@@ -161,30 +180,87 @@ public class PermissionManager {
         return hasPermission(player.getUniqueId(), permission);
     }
 
-    public boolean canSee(Player observer, Player target) {
-        if (!plugin.isVanished(target))
-            return true;
-        if (!hasPermission(observer, "vanishpp.see"))
-            return false;
+    public boolean hasPermission(CommandSender sender, String permission) {
+        return sender instanceof Player player ? hasPermission(player, permission) : sender.hasPermission(permission);
+    }
 
+    public boolean canSee(Player observer, Player target) {
+        if (!plugin.isVanished(target)) return true;
         ConfigManager cm = plugin.getConfigManager();
-        if (cm.layeredPermsEnabled) {
-            int targetVanishLevel = getLevel(target, "vanishpp.vanish.level.", cm.defaultVanishLevel);
-            int observerSeeLevel = getLevel(observer, "vanishpp.see.level.", cm.defaultSeeLevel);
-            if (observerSeeLevel < targetVanishLevel) {
-                return false;
-            }
-        }
-        return true;
+        return decide(observer, target.getUniqueId(), plugin.isVanished(target),
+                getLevel(target, "vanishpp.vanish.level.", cm.defaultVanishLevel));
+    }
+
+    public boolean canSee(CommandSender observer, Player target) {
+        return !(observer instanceof Player player) || canSee(player, target);
+    }
+
+    public boolean canSee(Player observer, UUID target) {
+        Player player = Bukkit.getPlayer(target);
+        if (player != null) return canSee(observer, player);
+        // No local permission facts exist for an offline/network-only packet entry.
+        return !plugin.isVanished(target) || (observer != null && observer.getUniqueId().equals(target));
+    }
+
+    public boolean canSee(CommandSender observer, UUID target) {
+        return !(observer instanceof Player player) || canSee(player, target);
+    }
+
+    public net.thecommandcraft.vanishpp.utils.VoiceAudience.Facts voiceFacts(Player player) {
+        ConfigManager cm = plugin.getConfigManager();
+        // Called only inside VoiceAudience's player-owned capture. Never recapture the old snapshot.
+        return new net.thecommandcraft.vanishpp.utils.VoiceAudience.Facts(hasPermissionOwned(player, "vanishpp.see"),
+                getLevelOwned(player, "vanishpp.see.level.", cm.defaultSeeLevel),
+                getLevelOwned(player, "vanishpp.vanish.level.", cm.defaultVanishLevel));
+    }
+
+    public int vanishLevel(Player target) {
+        return getLevel(target, "vanishpp.vanish.level.", plugin.getConfigManager().defaultVanishLevel);
+    }
+
+    public boolean canSee(CommandSender observer, NetworkVanishState target) {
+        if (!(observer instanceof Player player)) return true;
+        Player local = Bukkit.getPlayer(target.uuid());
+        return local != null ? canSee(player, local) : decide(player, target.uuid(), true, target.vanishLevel());
+    }
+
+    public boolean canReceiveStaffNotice(Player observer, Player target) {
+        ConfigManager cm = plugin.getConfigManager();
+        return hasPermission(observer, "vanishpp.see") && decide(observer, target.getUniqueId(), true,
+                getLevel(target, "vanishpp.vanish.level.", cm.defaultVanishLevel));
+    }
+
+    public List<Player> visiblePlayers(CommandSender observer) {
+        return Bukkit.getOnlinePlayers().stream().filter(player -> canSee(observer, player)).map(player -> (Player) player).toList();
+    }
+
+    public int publicOnlineCount() {
+        return AudiencePolicy.publicCount(Bukkit.getOnlinePlayers(), plugin::isVanished);
+    }
+
+    private boolean decide(Player observer, UUID target, boolean vanished, int vanishLevel) {
+        ConfigManager cm = plugin.getConfigManager();
+        return AudiencePolicy.canSee(observer == null ? null : observer.getUniqueId(), target, vanished,
+                observer != null && hasPermission(observer, "vanishpp.see"), cm.layeredPermsEnabled,
+                observer == null ? 0 : getLevel(observer, "vanishpp.see.level.", cm.defaultSeeLevel), vanishLevel);
     }
 
     private int getLevel(Player player, String prefix, int def) {
-        if (hasPermission(player, "vanishpp.*"))
+        if (!plugin.getVanishScheduler().owns(player)) {
+            var facts = plugin.voiceAudience.facts(player.getUniqueId());
+            boolean subject = prefix.equals("vanishpp.vanish.level.");
+            return facts == null ? (subject ? Integer.MAX_VALUE : 0) : subject ? facts.vanishLevel() : facts.seeLevel();
+        }
+        return getLevelOwned(player, prefix, def);
+    }
+
+    private int getLevelOwned(Player player, String prefix, int def) {
+        if (hasPermissionOwned(player, "vanishpp.*"))
             return plugin.getConfigManager().maxLevel;
 
         int max = plugin.getConfigManager().maxLevel;
         for (int i = max; i > 0; i--) {
-            if (hasPermission(player, prefix + i)) {
+            if (hasPermissionOwned(player, prefix + i)) {
                 return i;
             }
         }

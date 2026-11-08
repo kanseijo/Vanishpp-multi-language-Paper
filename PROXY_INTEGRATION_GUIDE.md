@@ -2,7 +2,17 @@
 
 ## Overview
 
-Vanish++ stores all vanish state in a **persistent, always-up-to-date database**. Proxy plugins (Velocity, BungeeCord) can reliably sync vanish status across multiple backend servers without any plugin-to-plugin integration.
+### Native Velocity companion
+
+Install matching current Vanish++ jars on Velocity and each Paper backend. Secure the backends with Velocity modern forwarding and prevent direct client connections. Set `proxy.enabled: true` in each backend's Vanish++ `config.yml`, then restart Paper. Leave this setting off on standalone servers; they do not register the `vanishpp:proxy` channel.
+
+The Velocity companion consumes this channel before checking the sender, so client messages cannot be forwarded as proxy commands. Paper accepts control messages only after its HELLO/PONG exchange completes. If no reply arrives within five seconds of sending HELLO, Paper closes the channel and runs standalone until restarted. The handshake relies on the secured backend connection and the installed Velocity companion; it is not a substitute for either. Upgrade both jars together before enabling the channel.
+
+`/vack apply_proxy` requires `vanishpp.config` to apply local settings across the network. Notification acknowledgements retain their existing permissions. Configuration completion also requires `vanishpp.config` and does not suggest passwords, authorization values, or webhook URLs.
+
+### Database integrations
+
+Vanish++ stores all vanish state in a **persistent storage**. Proxy plugins (Velocity, BungeeCord) can reliably sync vanish status across multiple backend servers without any plugin-to-plugin integration.
 
 ## Database Schema
 
@@ -46,7 +56,7 @@ public void applyVanishEffects(Player player) {
     
     UUID persistUuid = player.getUniqueId();
     vanishScheduler.runAsync(() -> {
-        storageProvider.setVanished(persistUuid, true);  // DB write (async, <1ms)
+        storageProvider.setVanished(persistUuid, true);  // ordered asynchronous storage write
         if (redisStorage != null) 
             redisStorage.broadcastVanish(persistUuid, true);  // Notify other servers
     });
@@ -476,7 +486,7 @@ public class VanishppBungeeAdapter extends Plugin {
 
 ✅ **Vanish++ v1.1.6 provides a production-grade database for proxy plugins:**
 
-- **Always up-to-date**: Async writes persist within 10ms
+- **Always up-to-date**: Accepted writes persist in submission order; storage latency determines completion time
 - **Reliable**: Transactions ensure consistency even on crashes
 - **Scalable**: Handles 1000+ vanished players per database
 - **Flexible**: Works with polling, Redis, or hybrid approaches
@@ -490,3 +500,7 @@ public class VanishppBungeeAdapter extends Plugin {
 **Last Updated**: 2026-04-04  
 **Version**: 1.1.6  
 **Status**: Production-Ready ✅
+
+The native Velocity companion now persists decisions in `state.yml`, imports unknown backend state during bootstrap, and sends revisioned state updates. Explicit proxy decisions win over backend YAML on login; an empty fresh snapshot does not erase persisted backend state. Reload preserves feature tasks and switches storage on the ordered worker after accepted writes. Server transfers keep the source carrier connected until its accepted state reaches the proxy; a five-second failure denies the switch rather than releasing stale destination visibility. Shared SQL and native proxy messaging remain distinct authority modes; use the companion on every secured backend and upgrade both jars together.
+
+Transfer readiness precedes the actual connection. Vanish++ keeps the source decision hold through later listeners and the destination connection, releasing it on detach or authenticated cancellation. If another plugin consumes a failed raw `connect()` future without an outcome event, retry the transfer or reconnect to release the hold. Failed state writes retry with backoff; SQL recovery becomes authoritative only after migration and deadline restoration finish.
