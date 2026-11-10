@@ -41,6 +41,8 @@ version:
 # --- [ 更新检查器 ] ---
 update:
   available: '&a&lVanish++ 有新版本可用！'
+  priority-security: '&c&l安全更新：&7修复了一个安全问题，请尽快更新。'
+  priority-critical: '&4&l重要更新：&7修复了一个严重问题，请立即更新。'
   current: '&7当前版本：&c%version%'
   latest: '&7最新版本：&a%version%'
   download: '&6&l[点击下载]'
@@ -188,7 +190,7 @@ acknowledgement:
   acknowledged: '&a通知已确认。'
   hiding-dismissed: '&7本版本的通知已忽略。'
   hiding-visible: '&aVanish++ 现已在插件列表中显示。'
-
+  auto-vanish-dismissed: '&7不会再显示自动隐身提示。自动隐身仍然开启。'
 # --- [ 忽略警告 ] ---
 ignore-warning:
   protocol-denied: '&c权限不足。'
@@ -233,6 +235,13 @@ history:
 auto-vanish:
   enabled: '&a已为 &e%player% &2启用 &a加入时自动隐身。'
   disabled: '&c已为 &e%player% &4禁用 &c加入时自动隐身。'
+  notice: '&7你以&b隐身&7状态加入，因为自动隐身已开启。'
+  button-unvanish: '&a&l[取消隐身]'
+  button-unvanish-hover: "&7立即变为可见。自动隐身仍然开启。\n&8执行：/vanish"
+  button-off: '&e&l[关闭自动隐身]'
+  button-off-hover: "&7以后加入时可见。\n&8执行：/vautovanish off"
+  button-dismiss: '&7&l[知道了]'
+  button-dismiss-hover: "&7不再显示此提示。自动隐身仍然开启。\n&8执行：/vack auto_vanish"
 
 # --- [ 统计数据 ] ---
 stats:
